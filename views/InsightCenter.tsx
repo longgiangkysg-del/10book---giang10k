@@ -212,6 +212,18 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
     );
   };
 
+  // Sách đã phân tích nhưng analysis chưa lazy-load xong → hiện loading
+  if (!isProcessing && !book.analysis && book.isSummarized) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+          <p className="text-slate-500 text-xs font-medium">Đang tải phân tích...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Only show hard-block if: not processing AND no analysis data AND no access (no key + no quota)
   if (!isProcessing && !book.analysis) {
     if (!hasAccess) {
