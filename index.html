@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover" />
+  <title>10kBook - High Productivity System</title>
+
+  <!-- PWA & Mobile Optimization -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#121317" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="10kBook" />
+  <link rel="apple-touch-icon" href="https://m.media-amazon.com/images/I/91bYsX41DVL.jpg" />
+
+  <!-- SEO & Social Sharing -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="10kBook" />
+  <meta property="og:title" content="10kBook - Hệ thống phân tích tri thức bằng AI" />
+  <meta property="og:description" content="Chiết xuất tri thức chuyên sâu từ hàng ngàn cuốn sách bằng AI. Phân tích, tóm tắt, và tạo lộ trình hành động." />
+  <meta property="og:url" content="https://10k.giauco.vn" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="10kBook - Phân tích tri thức bằng AI" />
+  <meta name="twitter:description" content="Chiết xuất tri thức chuyên sâu từ sách bằng AI" />
+  <meta name="description" content="10kBook - Hệ thống phân tích tri thức chuyên sâu bằng AI. Tóm tắt sách, chiết xuất ý tưởng, và tạo lộ trình hành động thực thi." />
+
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@8..144,400..500&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #121317;
+      --bg-card: #212226;
+      --bg-sidebar: #18191D;
+      --bg-surface: #18191D;
+      --bg-elevated: #2F3034;
+      --text-primary: #FFFFFF;
+      --text-body: #E6EAF0;
+      --text-secondary: #B2BBC5;
+      --text-muted: #45474D;
+      --border-main: rgba(230, 234, 240, 0.12);
+      --border-subtle: rgba(230, 234, 240, 0.06);
+      --accent-blue: #3279F9;
+      --accent-blue-hover: #4A8FFF;
+      --radius-sm: 8px;
+      --radius-md: 16px;
+      --radius-lg: 24px;
+      --radius-xl: 36px;
+    }
+
+    body {
+      font-family: 'Google Sans Flex', 'Google Sans', 'Segoe UI', sans-serif;
+      font-weight: 400;
+      font-optical-sizing: auto;
+      background-color: var(--bg-main);
+      color: var(--text-body);
+      font-size: 15px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      margin: 0;
+      padding: 0;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+
+      /* Mobile UX Optimizations */
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Allow selection in inputs */
+    input,
+    textarea {
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      font-weight: 450;
+      font-optical-sizing: auto;
+      color: var(--text-primary);
+    }
+
+    h1 {
+      font-size: 42px;
+      line-height: 44px;
+      letter-spacing: -0.73px;
+    }
+
+    h2 {
+      font-size: 32px;
+      line-height: 34px;
+      letter-spacing: -0.15px;
+    }
+
+    h3 {
+      font-size: 24px;
+      line-height: 26px;
+      letter-spacing: -0.07px;
+    }
+
+    h4 {
+      font-size: 20px;
+      line-height: 26px;
+      letter-spacing: -0.05px;
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 28px;
+        line-height: 30px;
+      }
+
+      h2 {
+        font-size: 24px;
+        line-height: 26px;
+      }
+
+      h3 {
+        font-size: 20px;
+        line-height: 22px;
+      }
+
+      h4 {
+        font-size: 18px;
+        line-height: 23px;
+      }
+    }
+
+    #root {
+      width: 100%;
+      height: 100vh;
+    }
+
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-main);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--text-muted);
+      border-radius: 10px;
+    }
+
+    /* Safe area support */
+    .safe-top {
+      padding-top: env(safe-area-inset-top);
+    }
+
+    .safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .safe-left {
+      padding-left: env(safe-area-inset-left);
+    }
+
+    .safe-right {
+      padding-right: env(safe-area-inset-right);
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.48.1",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "path": "https://esm.sh/path@^0.12.7",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "url": "https://esm.sh/url@^0.11.4"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        // Unregister ALL old service workers (including old proxy SW)
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+          console.log('Service Worker unregistered:', reg.scope);
+        }
+        // Re-register clean SW
+        navigator.serviceWorker.register('/sw.js').catch(err => {
+          console.log('SW registration failed: ', err);
+        });
+      });
+    }
+  </script>
+</body>
+
+</html>

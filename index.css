@@ -1,0 +1,70 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* Prevent font scaling when rotating mobile */
+  body {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Optimize inputs for mobile */
+  input, textarea, select {
+    font-size: 16px !important; /* Prevents auto-zoom on iOS */
+  }
+
+  /* Smooth scroll for all overflow containers */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  /* Touch friendly buttons */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Masking for horizontal scroll containers */
+  .mask-fade-right {
+    mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  }
+
+  /* Animation for PWA appearance */
+  .animate-pwa-in {
+    animation: pwaIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes pwaIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

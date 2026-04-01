@@ -1,0 +1,252 @@
+/**
+ * ═══════════════════════════════════════════════════════════
+ * ANALYSIS MANAGER — Module-level singleton
+ * ═══════════════════════════════════════════════════════════
+ * Chạy phân tích AI độc lập với React component lifecycle.
+ * 3 agent chạy song song — xong agent nào cập nhật ngay UI
+ * mà không cần đợi toàn bộ.
+ */
+
+import { geminiService } from './geminiService';
+import { apiKeyManager } from './apiKeyManager';
+
+export type AnalysisStatus = 'idle' | 'processing' | 'done' | 'error';
+
+export interface AgentProgress {
+    meta: 'pending' | 'running' | 'done' | 'error';       // → Layer 1: Overview
+    knowledge: 'pending' | 'running' | 'done' | 'error';  // → Layer 2: Architecture
+    ideas: 'pending' | 'running' | 'done' | 'error';      // → Layer 3: Ideas
+}
+
+export interface AnalysisState {
+    status: AnalysisStatus;
+    bookId: string | null;
+    bookTitle: string;
+    progress: string;
+    /** Kết quả tích lũy — cập nhật sau mỗi agent xong */
+    partialResult: any;
+    result: any | null;
+    error: string | null;
+    startedAt: number | null;
+    agentProgress: AgentProgress;
+}
+
+type StateListener = (state: AnalysisState) => void;
+
+// ── Singleton State ──────────────────────────────────────────
+const IDLE_AGENT: AgentProgress = { meta: 'pending', knowledge: 'pending', ideas: 'pending' };
+
+let state: AnalysisState = {
+    status: 'idle',
+    bookId: null,
+    bookTitle: '',
+    progress: '',
+    partialResult: null,
+    result: null,
+    error: null,
+    startedAt: null,
+    agentProgress: { ...IDLE_AGENT },
+};
+
+const listeners = new Set<StateListener>();
+
+function setState(partial: Partial<AnalysisState>) {
+    state = { ...state, ...partial };
+    listeners.forEach(fn => fn(state));
+}
+
+// ── Public API ───────────────────────────────────────────────
+export const analysisManager = {
+    subscribe(listener: StateListener): () => void {
+        listeners.add(listener);
+        listener(state);
+        return () => listeners.delete(listener);
+    },
+
+    getState(): AnalysisState {
+        return state;
+    },
+
+    isRunningFor(bookId: string): boolean {
+        return state.status === 'processing' && state.bookId === bookId;
+    },
+
+    /**
+     * Bắt đầu phân tích — 3 agent chạy SONG SONG (có key riêng).
+     * Khi dùng shared key (proxy) → gọi 1 lần processBookFull để chỉ tốn 1 quota.
+     */
+    async startAnalysis(
+        bookId: string,
+        bookTitle: string,
+        author: string,
+        goal: string,
+        onComplete: (bookId: string, result: any) => void,
+        onError?: (bookId: string, error: string) => void
+    ): Promise<void> {
+        if (state.status === 'processing') {
+            console.warn('[AnalysisManager] Already running for:', state.bookTitle);
+            return;
+        }
+
+        // Accumulator — merge kết quả từng agent vào đây
+        let partial: any = {};
+
+        const mergePartial = (update: any) => {
+            partial = { ...partial, ...update };
+            setState({ partialResult: { ...partial } });
+        };
+
+        setState({
+            status: 'processing',
+            bookId,
+            bookTitle,
+            progress: 'Đang khởi động AI Agent...',
+            partialResult: null,
+            result: null,
+            error: null,
+            startedAt: Date.now(),
+            agentProgress: { meta: 'running', knowledge: 'running', ideas: 'running' },
+        });
+
+        try {
+            const hasPersonalKey = !!apiKeyManager.getKey();
+
+            if (!hasPersonalKey) {
+                // ── MAINTENANCE GATE: Tạm dừng proxy (shared key) do hết quota ──
+                // Chỉ chặn khi user KHÔNG có key riêng (dùng key của chủ app)
+                // User có key riêng vẫn phân tích bình thường
+                const MAINTENANCE_END = new Date('2026-04-02T00:00:00+07:00');
+                if (new Date() < MAINTENANCE_END) {
+                    const errorMsg = '⏸️ Chức năng phân tích miễn phí tạm dừng đến hết ngày 01/04/2026 do hết quota. Bạn vẫn có thể sử dụng bằng cách nhập API Key cá nhân của mình!';
+                    setState({
+                        status: 'error',
+                        bookId,
+                        bookTitle,
+                        error: errorMsg,
+                        progress: '',
+                        agentProgress: { meta: 'error', knowledge: 'error', ideas: 'error' },
+                    });
+                    onError?.(bookId, errorMsg);
+                    return;
+                }
+
+                // ── PROXY MODE: 1 lần gọi duy nhất = 1 quota ──────────
+                console.log('📌 No personal key — using single processBookFull (proxy)');
+                setState({ progress: 'Đang phân tích qua AI Proxy (1 lượt miễn phí)...' });
+
+                const result = await geminiService.processBookFull(bookTitle, author, goal);
+
+                // Map result vào progressive UI
+                mergePartial({
+                    bookMeta: result.bookMeta,
+                    centralThesis: result.centralThesis,
+                    criticalAnalysis: result.criticalAnalysis,
+                    personalizedInsights: result.personalizedInsights,
+                    executiveSummary: result.executiveSummary,
+                    knowledgeArchitecture: result.knowledgeArchitecture,
+                    ideaSystem: result.ideaSystem,
+                });
+                setState({
+                    agentProgress: { meta: 'done', knowledge: 'done', ideas: 'done' },
+                    progress: '✅ Phân tích hoàn tất!',
+                    status: 'done',
+                    result: partial,
+                });
+                onComplete(bookId, partial);
+                return;
+            }
+
+            // ── PERSONAL KEY MODE: 3 agents song song (nhanh hơn) ──────
+
+            setState({ progress: 'Đang khởi động 3 AI Agent song song...' });
+
+            // ── Agent 1: Meta (→ Layer 1 Overview) ──────────────────
+            const p1 = geminiService.processMetaOnly(bookTitle, author, goal)
+                .then(res => {
+                    mergePartial({
+                        bookMeta: res.bookMeta,
+                        centralThesis: res.centralThesis,
+                        criticalAnalysis: res.criticalAnalysis,
+                        personalizedInsights: res.personalizedInsights,
+                        executiveSummary: res.executiveSummary,
+                    });
+                    setState({
+                        agentProgress: { ...state.agentProgress, meta: 'done' },
+                        progress: '✅ Overview xong · Đang chờ Architecture & Ideas...',
+                    });
+                    console.log('✅ Agent 1 (Meta) done');
+                })
+                .catch(err => {
+                    console.error('❌ Agent 1 (Meta) failed:', err);
+                    setState({ agentProgress: { ...state.agentProgress, meta: 'error' } });
+                });
+
+            // ── Agent 2: Knowledge Architecture (→ Layer 2) ─────────
+            const p2 = geminiService.processKnowledgeOnly(bookTitle, author, goal)
+                .then(res => {
+                    mergePartial({ knowledgeArchitecture: res.knowledgeArchitecture });
+                    setState({
+                        agentProgress: { ...state.agentProgress, knowledge: 'done' },
+                        progress: '✅ Architecture xong · Đang chờ Ideas...',
+                    });
+                    console.log('✅ Agent 2 (Knowledge) done —', res.knowledgeArchitecture?.length, 'parts');
+                })
+                .catch(err => {
+                    console.error('❌ Agent 2 (Knowledge) failed:', err);
+                    setState({ agentProgress: { ...state.agentProgress, knowledge: 'error' } });
+                });
+
+            // ── Agent 3: Idea System (→ Layer 3) ────────────────────
+            const p3 = geminiService.processIdeasOnly(bookTitle, author, goal)
+                .then(res => {
+                    mergePartial({ ideaSystem: res.ideaSystem });
+                    setState({
+                        agentProgress: { ...state.agentProgress, ideas: 'done' },
+                        progress: '✅ Ideas xong!',
+                    });
+                    console.log('✅ Agent 3 (Ideas) done —', res.ideaSystem?.length, 'ideas');
+                })
+                .catch(err => {
+                    console.error('❌ Agent 3 (Ideas) failed:', err);
+                    setState({ agentProgress: { ...state.agentProgress, ideas: 'error' } });
+                });
+
+            // Chờ tất cả 3 agent xong rồi finalize
+            await Promise.allSettled([p1, p2, p3]);
+
+            const finalResult = partial;
+            setState({
+                status: 'done',
+                result: finalResult,
+                progress: '✅ Phân tích hoàn tất!',
+            });
+
+            onComplete(bookId, finalResult);
+
+        } catch (err: any) {
+            console.error('❌ Analysis failed:', err);
+            const errorMsg = err?.message || 'Lỗi không xác định';
+            setState({
+                status: 'error',
+                error: errorMsg,
+                progress: '',
+                agentProgress: { meta: 'error', knowledge: 'error', ideas: 'error' },
+            });
+            onError?.(bookId, errorMsg);
+        }
+    },
+
+    reset() {
+        setState({
+            status: 'idle',
+            bookId: null,
+            bookTitle: '',
+            progress: '',
+            partialResult: null,
+            result: null,
+            error: null,
+            startedAt: null,
+            agentProgress: { ...IDLE_AGENT },
+        });
+    },
+};

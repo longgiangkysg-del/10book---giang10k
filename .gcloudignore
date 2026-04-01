@@ -1,0 +1,32 @@
+# Ignore git directory
+.git
+.gitignore
+
+# Ignore build artifacts and dependencies
+node_modules/
+dist/
+dist-ssr/
+
+# Ignore local env and keys
+*.local
+.env*
+gcloud-key.json
+
+# Ignore logs
+*.log
+
+# Ignore editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Ignore docs
+*.md
+
+# Ignore any AppData references
+AppData/
