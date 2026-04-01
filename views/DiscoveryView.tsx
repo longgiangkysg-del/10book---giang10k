@@ -14,6 +14,8 @@ interface DiscoveryViewProps {
   userBooks?: Book[];
   onAddBook: (title: string, author: string, coverImage?: string, tags?: string[]) => void;
   onUnsaveBook?: (id: string) => void;
+  onDeleteBook?: (id: string) => void;
+  isAdmin?: boolean;
   initialSearch?: string;
 }
 
@@ -24,7 +26,7 @@ const removeAccents = (str: any) => {
 
 const BOOKS_PER_PAGE = 24;
 
-const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onUpdateBook, allBooks, userBooks = [], onAddBook, onUnsaveBook, initialSearch }) => {
+const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onUpdateBook, allBooks, userBooks = [], onAddBook, onUnsaveBook, onDeleteBook, isAdmin, initialSearch }) => {
   const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState(initialSearch || '');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -285,6 +287,9 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
                   onUnsaveBook && <button onClick={(e) => { e.stopPropagation(); onUnsaveBook(book.id); }} className="w-full py-2 md:py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg md:rounded-xl text-[9px] font-medium tracking-wide shadow-xl transition-all">Bỏ khỏi tủ</button>
                 ) : (
                   <button onClick={(e) => handleSaveClick(e, book)} className="w-full py-2 md:py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg md:rounded-xl text-[9px] font-medium tracking-wide shadow-xl transition-all flex items-center justify-center gap-2"><Plus size={12} /> Lưu về tủ</button>
+                )}
+                {isAdmin && onDeleteBook && (
+                  <button onClick={(e) => { e.stopPropagation(); onDeleteBook(book.id); }} className="w-full py-2 md:py-2.5 bg-red-900 hover:bg-red-700 text-red-200 rounded-lg md:rounded-xl text-[9px] font-medium tracking-wide border border-red-700/50 transition-all flex items-center justify-center gap-1">🗑 XÓA VĨNH VIỄN</button>
                 )}
               </div>
             </div>

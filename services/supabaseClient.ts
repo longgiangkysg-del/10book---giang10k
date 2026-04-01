@@ -7,6 +7,11 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// ═══════════════════════════════════════════════════════════
+// ADMIN CONFIG
+// ═══════════════════════════════════════════════════════════
+const ADMIN_EMAILS = ['longgiangptit@gmail.com'];
+
 export const authService = {
   async signInWithGoogle() {
     // Fix: Cast supabase.auth to any to bypass 'signInWithOAuth' does not exist error on the current type definition.
@@ -27,9 +32,13 @@ export const authService = {
   },
 
   async getCurrentUser() {
-    // Fix: Cast supabase.auth to any to bypass 'getUser' does not exist error on the current type definition.
     const { data: { user } } = await (supabase.auth as any).getUser();
     return user;
+  },
+
+  async isAdmin(): Promise<boolean> {
+    const user = await this.getCurrentUser();
+    return !!user?.email && ADMIN_EMAILS.includes(user.email);
   }
 };
 
@@ -283,6 +292,18 @@ export const bookService = {
     }
 
     return data;
+  },
+
+  async deleteBook(bookId: string) {
+    const isAdmin = await authService.isAdmin();
+    if (!isAdmin) throw new Error('Chỉ admin mới có quyền xóa sách vĩnh viễn.');
+
+    const { error } = await supabase
+      .from('books')
+      .delete()
+      .eq('id', bookId);
+
+    if (error) throw error;
   },
 
   async removeUserFromBook(bookId: string) {

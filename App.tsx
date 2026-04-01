@@ -48,6 +48,7 @@ const App: React.FC = () => {
   const [books, setBooks] = useState<BookWithActivity[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // PWA Install States
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -289,9 +290,13 @@ const App: React.FC = () => {
         setIsKeyConfigured(false);
       }
 
-      // Load free quota
-      const remaining = await sharedKeyService.getRemainingQuota();
+      // Load free quota + admin status
+      const [remaining, adminStatus] = await Promise.all([
+        sharedKeyService.getRemainingQuota(),
+        authService.isAdmin()
+      ]);
       setFreeQuotaRemaining(remaining);
+      setIsAdmin(adminStatus);
 
       await loadData();
       await loadActivities();
@@ -391,6 +396,20 @@ const App: React.FC = () => {
       showToast(`Đã thêm "${book.title}" vào tủ sách cá nhân.`, "success");
     } catch (err) {
       showToast("Không thể lưu sách. Vui lòng thử lại sau.", "error");
+    }
+  };
+
+  const deleteBookPermanently = async (bookId: string) => {
+    if (!isAdmin) return;
+    if (!window.confirm('⚠️ ADMIN: Xóa sách vĩnh viễn khỏi hệ thống?\nHành động này KHÔNG THỂ hoàn tác!')) return;
+    try {
+      await bookService.deleteBook(bookId);
+      await loadData();
+      await loadActivities();
+      if (selectedBookId === bookId) setSelectedBookId(null);
+      showToast('Đã xóa sách vĩnh viễn khỏi hệ thống.', 'success');
+    } catch (err: any) {
+      showToast(`Lỗi: ${err.message}`, 'error');
     }
   };
 
@@ -597,7 +616,7 @@ const App: React.FC = () => {
           ) : activeTab === 'actions' ? (
             <ActionTracker books={libraryBooks} onUpdateBook={updateBook} />
           ) : (
-            <DiscoveryView onSelectBook={handleOpenBook} onSave={saveToLibrary} onUpdateBook={updateBook} allBooks={discoveryBooks} userBooks={libraryBooks} onAddBook={addBook} onUnsaveBook={unsaveFromLibrary} initialSearch={authorFilter} />
+            <DiscoveryView onSelectBook={handleOpenBook} onSave={saveToLibrary} onUpdateBook={updateBook} allBooks={discoveryBooks} userBooks={libraryBooks} onAddBook={addBook} onUnsaveBook={unsaveFromLibrary} onDeleteBook={isAdmin ? deleteBookPermanently : undefined} isAdmin={isAdmin} initialSearch={authorFilter} />
           )}
         </div>
       </main >
