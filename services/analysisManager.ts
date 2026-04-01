@@ -55,6 +55,11 @@ function setState(partial: Partial<AnalysisState>) {
     listeners.forEach(fn => fn(state));
 }
 
+/** Thread-safe helper: cập nhật 1 agent trong agentProgress mà không ghi đè agent khác */
+function setAgentStatus(agent: keyof AgentProgress, status: AgentProgress[keyof AgentProgress]) {
+    setState({ agentProgress: { ...state.agentProgress, [agent]: status } });
+}
+
 // ── Public API ───────────────────────────────────────────────
 export const analysisManager = {
     subscribe(listener: StateListener): () => void {
@@ -112,25 +117,7 @@ export const analysisManager = {
             const hasPersonalKey = !!apiKeyManager.getKey();
 
             if (!hasPersonalKey) {
-                // ── MAINTENANCE GATE: Tạm dừng proxy (shared key) do hết quota ──
-                // Chỉ chặn khi user KHÔNG có key riêng (dùng key của chủ app)
-                // User có key riêng vẫn phân tích bình thường
-                const MAINTENANCE_END = new Date('2026-04-02T00:00:00+07:00');
-                if (new Date() < MAINTENANCE_END) {
-                    const errorMsg = '⏸️ Chức năng phân tích miễn phí tạm dừng đến hết ngày 01/04/2026 do hết quota. Bạn vẫn có thể sử dụng bằng cách nhập API Key cá nhân của mình!';
-                    setState({
-                        status: 'error',
-                        bookId,
-                        bookTitle,
-                        error: errorMsg,
-                        progress: '',
-                        agentProgress: { meta: 'error', knowledge: 'error', ideas: 'error' },
-                    });
-                    onError?.(bookId, errorMsg);
-                    return;
-                }
-
-                // ── PROXY MODE: 1 lần gọi duy nhất = 1 quota ──────────
+                // ── PROXY MODE: 1 lần gọi duy nhất = 1 quota/tháng ──────────
                 console.log('📌 No personal key — using single processBookFull (proxy)');
                 setState({ progress: 'Đang phân tích qua AI Proxy (1 lượt miễn phí)...' });
 
@@ -170,45 +157,39 @@ export const analysisManager = {
                         personalizedInsights: res.personalizedInsights,
                         executiveSummary: res.executiveSummary,
                     });
-                    setState({
-                        agentProgress: { ...state.agentProgress, meta: 'done' },
-                        progress: '✅ Overview xong · Đang chờ Architecture & Ideas...',
-                    });
+                    setAgentStatus('meta', 'done');
+                    setState({ progress: '✅ Overview xong · Đang chờ Architecture & Ideas...' });
                     console.log('✅ Agent 1 (Meta) done');
                 })
                 .catch(err => {
                     console.error('❌ Agent 1 (Meta) failed:', err);
-                    setState({ agentProgress: { ...state.agentProgress, meta: 'error' } });
+                    setAgentStatus('meta', 'error');
                 });
 
             // ── Agent 2: Knowledge Architecture (→ Layer 2) ─────────
             const p2 = geminiService.processKnowledgeOnly(bookTitle, author, goal)
                 .then(res => {
                     mergePartial({ knowledgeArchitecture: res.knowledgeArchitecture });
-                    setState({
-                        agentProgress: { ...state.agentProgress, knowledge: 'done' },
-                        progress: '✅ Architecture xong · Đang chờ Ideas...',
-                    });
+                    setAgentStatus('knowledge', 'done');
+                    setState({ progress: '✅ Architecture xong · Đang chờ Ideas...' });
                     console.log('✅ Agent 2 (Knowledge) done —', res.knowledgeArchitecture?.length, 'parts');
                 })
                 .catch(err => {
                     console.error('❌ Agent 2 (Knowledge) failed:', err);
-                    setState({ agentProgress: { ...state.agentProgress, knowledge: 'error' } });
+                    setAgentStatus('knowledge', 'error');
                 });
 
             // ── Agent 3: Idea System (→ Layer 3) ────────────────────
             const p3 = geminiService.processIdeasOnly(bookTitle, author, goal)
                 .then(res => {
                     mergePartial({ ideaSystem: res.ideaSystem });
-                    setState({
-                        agentProgress: { ...state.agentProgress, ideas: 'done' },
-                        progress: '✅ Ideas xong!',
-                    });
+                    setAgentStatus('ideas', 'done');
+                    setState({ progress: '✅ Ideas xong!' });
                     console.log('✅ Agent 3 (Ideas) done —', res.ideaSystem?.length, 'ideas');
                 })
                 .catch(err => {
                     console.error('❌ Agent 3 (Ideas) failed:', err);
-                    setState({ agentProgress: { ...state.agentProgress, ideas: 'error' } });
+                    setAgentStatus('ideas', 'error');
                 });
 
             // Chờ tất cả 3 agent xong rồi finalize

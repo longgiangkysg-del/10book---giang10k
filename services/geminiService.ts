@@ -50,6 +50,22 @@ const callGeminiProxy = async (
   return json.data;
 };
 
+/** Trích xuất và parse JSON an toàn từ response text của Gemini */
+const safeParseGeminiJson = (rawText: string): any => {
+  let text = rawText || '{}';
+  const startIdx = text.indexOf('{');
+  const endIdx = text.lastIndexOf('}') + 1;
+  if (startIdx !== -1 && endIdx > startIdx) {
+    text = text.substring(startIdx, endIdx);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error('❌ JSON parse failed. Raw text (first 500 chars):', text.substring(0, 500));
+    throw new Error('AI trả về dữ liệu không hợp lệ (JSON malformed). Vui lòng thử lại.');
+  }
+};
+
 const getApiKey = (): string => {
   const key = apiKeyManager.getKey();
   if (!key) {
@@ -182,12 +198,7 @@ QUALITY: Mọi nhận định phải có dẫn chứng cụ thể. Không khen s
     }
   });
 
-  let rawText = response.text || "{}";
-  const startIdx = rawText.indexOf('{');
-  const endIdx = rawText.lastIndexOf('}') + 1;
-  if (startIdx !== -1) rawText = rawText.substring(startIdx, endIdx);
-
-  return JSON.parse(rawText);
+  return safeParseGeminiJson(response.text || '{}');
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -269,12 +280,7 @@ QUAN TRỌNG: PHẢI sử dụng ký tự xuống hàng (\\n\\n) để phân tá
     }
   });
 
-  let rawText = response.text || "{}";
-  const startIdx = rawText.indexOf('{');
-  const endIdx = rawText.lastIndexOf('}') + 1;
-  if (startIdx !== -1) rawText = rawText.substring(startIdx, endIdx);
-
-  return JSON.parse(rawText);
+  return safeParseGeminiJson(response.text || '{}');
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -369,12 +375,7 @@ QUAN TRỌNG: PHẢI sử dụng ký tự xuống hàng (\\n\\n) để phân tá
     }
   });
 
-  let rawText = response.text || "{}";
-  const startIdx = rawText.indexOf('{');
-  const endIdx = rawText.lastIndexOf('}') + 1;
-  if (startIdx !== -1) rawText = rawText.substring(startIdx, endIdx);
-
-  return JSON.parse(rawText);
+  return safeParseGeminiJson(response.text || '{}');
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -413,7 +414,7 @@ export const geminiService = {
       Chỉ trả về danh sách các chương, mỗi chương trên một dòng. Không thêm lời dẫn. Ngôn ngữ: Tiếng Việt.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: 'gemini-2.5-pro',
         contents: { parts: [{ text: prompt }] },
         config: {
           temperature: 0.3,

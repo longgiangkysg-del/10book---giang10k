@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Menu, X, Library, LayoutDashboard, CheckCircle2, History, Compass, LogOut, Settings, Key, Save, ExternalLink, ShieldCheck, ShieldAlert, Activity, User, Loader2, Download, HelpCircle
 } from 'lucide-react';
@@ -183,23 +183,26 @@ const App: React.FC = () => {
     }
   };
 
+  // Ref giữ phiên bản mới nhất của handlePostLogin — tránh stale closure trong useEffect mount-only
+  const handlePostLoginRef = useRef<() => Promise<void>>();
+
   useEffect(() => {
-    // API Key không còn đọc từ localStorage — sẽ được load từ Supabase trong handlePostLogin
     apiKeyManager.clearKey();
     setIsKeyConfigured(false);
 
     (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
       setSession(session);
-      if (session) handlePostLogin();
+      if (session) handlePostLoginRef.current?.();
       else setIsLoading(false);
     });
 
     const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
       setSession(session);
-      if (session) handlePostLogin();
+      if (session) handlePostLoginRef.current?.();
     });
 
     return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = useCallback(async () => {
@@ -298,6 +301,7 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   };
+  handlePostLoginRef.current = handlePostLogin;
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -621,7 +625,7 @@ const App: React.FC = () => {
                     <p className="text-slate-400 text-[9px] md:text-[10px] leading-relaxed font-medium">
                       {isKeyConfigured
                         ? "Bạn đang dùng API Key cá nhân. Quyền kiểm soát thuộc về bạn."
-                        : "Nhập Gemini API Key để dùng không giới hạn, hoặc dùng lượt miễn phí hôm nay."}
+                        : "Nhập Gemini API Key để dùng không giới hạn, hoặc dùng lượt miễn phí tháng này."}
                     </p>
                     {/* Quota badge: chỉ hiện khi chưa có key riêng và có shared key */}
                     {!isKeyConfigured && freeQuotaRemaining !== null && (
@@ -631,8 +635,8 @@ const App: React.FC = () => {
                         }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${freeQuotaRemaining > 0 ? 'bg-blue-400 animate-pulse' : 'bg-rose-400'}`} />
                         {freeQuotaRemaining > 0
-                          ? `Còn ${freeQuotaRemaining} lượt miễn phí hôm nay`
-                          : 'Hết lượt miễn phí hôm nay — Nhập key để tiếp tục'}
+                          ? `Còn ${freeQuotaRemaining} lượt miễn phí tháng này`
+                          : 'Hết lượt miễn phí tháng này — Nhập key để tiếp tục'}
                       </div>
                     )}
                   </div>

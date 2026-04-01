@@ -224,12 +224,14 @@ export const bookService = {
       existing = data;
     }
 
-    if (!existing) {
+    if (!existing && book.title && book.author) {
+      // Escape ILIKE wildcards: % và _ là ký tự đặc biệt trong ILIKE
+      const escapeIlike = (s: string) => s.replace(/%/g, '\\%').replace(/_/g, '\\_');
       const { data } = await supabase
         .from('books')
         .select('*')
-        .ilike('title', book.title || '')
-        .ilike('author', book.author || '')
+        .ilike('title', escapeIlike(book.title))
+        .ilike('author', escapeIlike(book.author))
         .maybeSingle();
       existing = data;
     }
@@ -340,39 +342,40 @@ export const ratingService = {
 
 // ═══════════════════════════════════════════════════════════
 // SHARED KEY SERVICE — Rate limiting cho Shared Gemini Key
-// Giới hạn: VITE_DAILY_FREE_QUOTA lượt phân tích/user/ngày
+// Giới hạn: 1 lượt phân tích miễn phí / user / tháng
 // ═══════════════════════════════════════════════════════════
-const DAILY_QUOTA = Number(import.meta.env.VITE_DAILY_FREE_QUOTA ?? 1);
+const MONTHLY_QUOTA = 1;
 
 export const sharedKeyService = {
   /**
-   * Lấy số lượt đã dùng hôm nay của user hiện tại
+   * Lấy số lượt đã dùng THÁNG NÀY của user hiện tại
    */
-  async getUsedToday(): Promise<number> {
+  async getUsedThisMonth(): Promise<number> {
     const user = await authService.getCurrentUser();
-    if (!user) return DAILY_QUOTA; // Chưa login → coi như hết quota
+    if (!user) return MONTHLY_QUOTA; // Chưa login → coi như hết quota
 
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const now = new Date();
+    const firstDayOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const lastDay = `${lastDayOfMonth.getFullYear()}-${String(lastDayOfMonth.getMonth() + 1).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`;
+
     const { data } = await supabase
       .from('shared_key_usage')
       .select('count')
       .eq('user_id', user.id)
-      .eq('used_at', today)
-      .maybeSingle();
+      .gte('used_at', firstDayOfMonth)
+      .lte('used_at', lastDay);
 
-    return data?.count ?? 0;
+    if (!data || data.length === 0) return 0;
+    return data.reduce((sum, row) => sum + (row.count ?? 0), 0);
   },
 
   /**
-   * Kiểm tra user còn quota dùng shared key hôm nay không
+   * Kiểm tra user còn quota dùng shared key tháng này không
    */
   async canUseSharedKey(): Promise<boolean> {
-    // Nếu không có shared key trong env → không hỗ trợ
-    const sharedKey = import.meta.env.VITE_SHARED_GEMINI_KEY;
-    if (!sharedKey || sharedKey === 'PLACEHOLDER') return false;
-
-    const used = await this.getUsedToday();
-    return used < DAILY_QUOTA;
+    const used = await this.getUsedThisMonth();
+    return used < MONTHLY_QUOTA;
   },
 
   /**
@@ -383,7 +386,6 @@ export const sharedKeyService = {
     if (!user) return;
 
     const today = new Date().toISOString().split('T')[0];
-    // Upsert: nếu đã có record → tăng count, chưa có → tạo mới với count=1
     await supabase.rpc('increment_shared_key_usage', {
       p_user_id: user.id,
       p_date: today
@@ -391,17 +393,10 @@ export const sharedKeyService = {
   },
 
   /**
-   * Lấy số lượt còn lại hôm nay
+   * Lấy số lượt còn lại tháng này
    */
   async getRemainingQuota(): Promise<number> {
-    const used = await this.getUsedToday();
-    return Math.max(0, DAILY_QUOTA - used);
-  },
-
-  /**
-   * Lấy shared key từ env (chỉ dùng nội bộ trong services)
-   */
-  getSharedKey(): string {
-    return import.meta.env.VITE_SHARED_GEMINI_KEY || '';
+    const used = await this.getUsedThisMonth();
+    return Math.max(0, MONTHLY_QUOTA - used);
   }
 };

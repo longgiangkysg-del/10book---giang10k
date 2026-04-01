@@ -4,6 +4,8 @@
 -- ═══════════════════════════════════════════════════════════
 
 -- 1. Tạo bảng theo dõi lượt dùng shared key
+--    Mỗi row = 1 ngày. Quota được kiểm tra theo THÁNG (SUM count trong tháng hiện tại)
+--    Giới hạn: 1 lượt phân tích miễn phí / user / tháng
 CREATE TABLE IF NOT EXISTS shared_key_usage (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES users(id) ON DELETE CASCADE NOT NULL,

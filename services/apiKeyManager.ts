@@ -12,7 +12,6 @@ export const apiKeyManager = {
    */
   setKey(key: string): void {
     currentApiKey = key?.trim() || '';
-    console.log('🔑 API Key updated:', currentApiKey ? '***' + currentApiKey.slice(-4) : '(empty)');
   },
 
   /**
@@ -34,6 +33,5 @@ export const apiKeyManager = {
    */
   clearKey(): void {
     currentApiKey = '';
-    console.log('🔑 API Key cleared');
   }
 };

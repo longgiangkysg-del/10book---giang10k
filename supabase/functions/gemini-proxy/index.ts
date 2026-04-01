@@ -6,8 +6,8 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ─── Rate limit config ────────────────────────────────────────
-const DAILY_QUOTA = 1;
+// ─── Rate limit config: 1 lượt miễn phí / user / tháng ───────
+const MONTHLY_QUOTA = 1;
 
 Deno.serve(async (req: Request) => {
     // Handle CORS preflight
@@ -59,18 +59,22 @@ Deno.serve(async (req: Request) => {
         let usedSharedKey = false;
 
         if (!apiKey) {
-            // Ưu tiên 2: Shared key — kiểm tra rate limit
-            const today = new Date().toISOString().split('T')[0];
-            const { data: usage } = await adminSupabase
+            // Ưu tiên 2: Shared key — kiểm tra rate limit (1 lượt/tháng)
+            const now = new Date();
+            const firstDayOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+            const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            const lastDay = `${lastDayOfMonth.getFullYear()}-${String(lastDayOfMonth.getMonth() + 1).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`;
+
+            const { data: usageRows } = await adminSupabase
                 .from('shared_key_usage')
                 .select('count')
                 .eq('user_id', userId)
-                .eq('used_at', today)
-                .maybeSingle();
+                .gte('used_at', firstDayOfMonth)
+                .lte('used_at', lastDay);
 
-            const usedToday = usage?.count ?? 0;
+            const usedThisMonth = (usageRows || []).reduce((sum: number, row: any) => sum + (row.count ?? 0), 0);
 
-            if (usedToday >= DAILY_QUOTA) {
+            if (usedThisMonth >= MONTHLY_QUOTA) {
                 return new Response(JSON.stringify({ error: 'FREE_QUOTA_EXHAUSTED' }), {
                     status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
@@ -85,13 +89,14 @@ Deno.serve(async (req: Request) => {
             }
 
             // Ghi nhận 1 lượt dùng
+            const today = new Date().toISOString().split('T')[0];
             await adminSupabase.rpc('increment_shared_key_usage', {
                 p_user_id: userId,
                 p_date: today
             });
 
             usedSharedKey = true;
-            console.log(`📌 User ${userId} dùng shared key (${usedToday + 1}/${DAILY_QUOTA} hôm nay)`);
+            console.log(`📌 User ${userId} dùng shared key (${usedThisMonth + 1}/${MONTHLY_QUOTA} tháng này)`);
         }
 
         // ── 4. Gọi Gemini API server-side ────────────────────────
@@ -115,8 +120,13 @@ Deno.serve(async (req: Request) => {
             let rawText = response.text || '{}';
             const startIdx = rawText.indexOf('{');
             const endIdx = rawText.lastIndexOf('}') + 1;
-            if (startIdx !== -1) rawText = rawText.substring(startIdx, endIdx);
-            return JSON.parse(rawText);
+            if (startIdx !== -1 && endIdx > startIdx) rawText = rawText.substring(startIdx, endIdx);
+            try {
+                return JSON.parse(rawText);
+            } catch {
+                console.error('JSON parse failed:', rawText.substring(0, 300));
+                throw new Error('AI trả về dữ liệu không hợp lệ (JSON malformed)');
+            }
         };
 
         let result: any;
