@@ -18,6 +18,8 @@ export interface AgentProgress {
     ideas: 'pending' | 'running' | 'done' | 'error';      // → Layer 3: Ideas
 }
 
+export type AnalysisErrorType = 'api_key' | 'quota' | 'general' | null;
+
 export interface AnalysisState {
     status: AnalysisStatus;
     bookId: string | null;
@@ -27,6 +29,8 @@ export interface AnalysisState {
     partialResult: any;
     result: any | null;
     error: string | null;
+    /** Loại lỗi: api_key (key hết hạn/sai), quota (hết lượt free), general (lỗi khác) */
+    errorType: AnalysisErrorType;
     startedAt: number | null;
     agentProgress: AgentProgress;
 }
@@ -44,6 +48,7 @@ let state: AnalysisState = {
     partialResult: null,
     result: null,
     error: null,
+    errorType: null,
     startedAt: null,
     agentProgress: { ...IDLE_AGENT },
 };
@@ -109,6 +114,7 @@ export const analysisManager = {
             partialResult: null,
             result: null,
             error: null,
+            errorType: null,
             startedAt: Date.now(),
             agentProgress: { meta: 'running', knowledge: 'running', ideas: 'running' },
         });
@@ -193,7 +199,38 @@ export const analysisManager = {
                 });
 
             // Chờ tất cả 3 agent xong rồi finalize
-            await Promise.allSettled([p1, p2, p3]);
+            const results = await Promise.allSettled([p1, p2, p3]);
+
+            // Kiểm tra nếu TẤT CẢ agent đều lỗi → báo lỗi thay vì trả kết quả rỗng
+            const allFailed = state.agentProgress.meta === 'error' &&
+                state.agentProgress.knowledge === 'error' &&
+                state.agentProgress.ideas === 'error';
+
+            if (allFailed) {
+                // Tìm lỗi đầu tiên từ agent để hiển thị
+                const firstError = results
+                    .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+                    .map(r => r.reason?.message || String(r.reason))[0] || 'Tất cả AI Agent đều thất bại.';
+
+                let errorType: AnalysisErrorType = 'general';
+                if (firstError.includes('API_KEY_ERROR') || firstError.includes('expired') || firstError.includes('API_KEY_INVALID')) errorType = 'api_key';
+                else if (firstError.includes('QUOTA_ERROR') || firstError.includes('FREE_QUOTA_EXHAUSTED')) errorType = 'quota';
+
+                const userMessage = errorType === 'api_key'
+                    ? 'API Key của bạn không hợp lệ hoặc đã hết hạn. Vui lòng vào Cài đặt để cập nhật Key mới.'
+                    : errorType === 'quota'
+                    ? 'Bạn đã hết lượt phân tích miễn phí tháng này. Nhập API Key cá nhân để tiếp tục.'
+                    : firstError.replace('API_KEY_ERROR: ', '').replace('QUOTA_ERROR: ', '');
+
+                setState({
+                    status: 'error',
+                    error: userMessage,
+                    errorType,
+                    progress: '',
+                });
+                onError?.(bookId, userMessage);
+                return;
+            }
 
             const finalResult = partial;
             setState({
@@ -207,13 +244,25 @@ export const analysisManager = {
         } catch (err: any) {
             console.error('❌ Analysis failed:', err);
             const errorMsg = err?.message || 'Lỗi không xác định';
+
+            // Phân loại lỗi để UI hiển thị đúng thông báo
+            let errorType: AnalysisErrorType = 'general';
+            if (errorMsg.includes('API_KEY_ERROR')) errorType = 'api_key';
+            else if (errorMsg.includes('QUOTA_ERROR') || errorMsg.includes('FREE_QUOTA_EXHAUSTED')) errorType = 'quota';
+
+            // Lọc prefix kỹ thuật ra khỏi message hiển thị cho user
+            const userMessage = errorMsg
+                .replace('API_KEY_ERROR: ', '')
+                .replace('QUOTA_ERROR: ', '');
+
             setState({
                 status: 'error',
-                error: errorMsg,
+                error: userMessage,
+                errorType,
                 progress: '',
                 agentProgress: { meta: 'error', knowledge: 'error', ideas: 'error' },
             });
-            onError?.(bookId, errorMsg);
+            onError?.(bookId, userMessage);
         }
     },
 
@@ -226,6 +275,7 @@ export const analysisManager = {
             partialResult: null,
             result: null,
             error: null,
+            errorType: null,
             startedAt: null,
             agentProgress: { ...IDLE_AGENT },
         });

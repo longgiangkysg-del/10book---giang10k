@@ -74,16 +74,32 @@ const getApiKey = (): string => {
   return key;
 };
 
+/** Phát hiện lỗi liên quan đến API Key (invalid, expired, quota) */
+const isApiKeyError = (error: any): boolean => {
+  const msg = (error?.message || String(error)).toLowerCase();
+  return msg.includes('api_key_invalid') ||
+    msg.includes('api key not found') ||
+    msg.includes('api key expired') ||
+    msg.includes('invalid_argument') ||
+    msg.includes('permission_denied') ||
+    msg.includes('please renew the api key') ||
+    (msg.includes('400') && (msg.includes('key') || msg.includes('invalid')));
+};
+
 const handleApiError = async (error: any) => {
   const errorMessage = error?.message || String(error);
 
-  if (errorMessage.includes("API_KEY_INVALID") || errorMessage.includes("API key not found")) {
-    console.error("Lỗi API Key cá nhân:", errorMessage);
-    throw new Error("API Key cá nhân của bạn không hợp lệ hoặc đã hết hạn.");
+  if (isApiKeyError(error)) {
+    console.error("Lỗi API Key:", errorMessage);
+    throw new Error("API_KEY_ERROR: API Key của bạn không hợp lệ hoặc đã hết hạn. Vui lòng vào Cài đặt để cập nhật Key mới.");
   }
 
   if (errorMessage.includes("Requested entity was not found")) {
-    console.warn("Dịch vụ không khả dụng với Key hiện tại. Vui lòng kiểm tra lại cấu hình Key.");
+    throw new Error("API_KEY_ERROR: Model AI không khả dụng với Key hiện tại. Vui lòng kiểm tra lại Key.");
+  }
+
+  if (errorMessage.includes("FREE_QUOTA_EXHAUSTED")) {
+    throw new Error("QUOTA_ERROR: Bạn đã hết lượt phân tích miễn phí tháng này. Nhập API Key cá nhân để tiếp tục sử dụng không giới hạn.");
   }
 
   throw error;
@@ -100,6 +116,8 @@ const retryWithDelay = async <T>(fn: () => Promise<T>, maxRetries = 3, baseDelay
       return await fn();
     } catch (error: any) {
       const msg = error?.message || String(error);
+      // Không retry lỗi API key — chỉ retry lỗi server overload
+      if (isApiKeyError(error)) throw error;
       const isRetryable = msg.includes('503') || msg.includes('429') || msg.includes('UNAVAILABLE') || msg.includes('high demand');
 
       if (isRetryable && attempt < maxRetries) {
