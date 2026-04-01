@@ -1,7 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Gem, Zap, Search, Crown, Plus, X, Users, Edit3, Camera, Check, ArrowUpDown } from 'lucide-react';
+import { Gem, Zap, Search, Crown, Plus, X, Users, Edit3, Camera, Check, ArrowUpDown, Sparkles, Brain, Loader2, Play } from 'lucide-react';
 import { Book } from '../types';
 import { bookService } from '../services/supabaseClient';
+import { geminiService } from '../services/geminiService';
+import { apiKeyManager } from '../services/apiKeyManager';
+import { analysisManager } from '../services/analysisManager';
 import { compressImage } from '../utils/imageUtils';
 import { useToast } from '../components/Toast';
 import LazyBookCover from '../components/LazyBookCover';
@@ -15,6 +18,7 @@ interface DiscoveryViewProps {
   onAddBook: (title: string, author: string, coverImage?: string, tags?: string[]) => void;
   onUnsaveBook?: (id: string) => void;
   onDeleteBook?: (id: string) => void;
+  onBatchAnalyze?: (bookIds: string[]) => void;
   isAdmin?: boolean;
   initialSearch?: string;
 }
@@ -26,7 +30,7 @@ const removeAccents = (str: any) => {
 
 const BOOKS_PER_PAGE = 24;
 
-const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onUpdateBook, allBooks, userBooks = [], onAddBook, onUnsaveBook, onDeleteBook, isAdmin, initialSearch }) => {
+const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onUpdateBook, allBooks, userBooks = [], onAddBook, onUnsaveBook, onDeleteBook, onBatchAnalyze, isAdmin, initialSearch }) => {
   const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState(initialSearch || '');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -35,6 +39,19 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
   const [currentPage, setCurrentPage] = useState(1);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // ═══ AI Search State ═══
+  const [showAiSearch, setShowAiSearch] = useState(false);
+  const [aiSearchGoal, setAiSearchGoal] = useState('');
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiResults, setAiResults] = useState<{ title: string; author: string; reason: string }[]>([]);
+  const [aiAdding, setAiAdding] = useState<Set<number>>(new Set());
+
+  // ═══ Batch Analyze State ═══
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentTitle: '' });
   const [editData, setEditData] = useState<any>(null);
   const [formData, setFormData] = useState({
     title: '', author: '', coverImage: '', tags: [] as string[]
@@ -154,6 +171,112 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
     }
   };
 
+  // ═══ AI Search: Gọi Gemini tìm sách theo mục tiêu ═══
+  const handleAiSearch = async () => {
+    if (!aiSearchGoal.trim()) return;
+    const userKey = apiKeyManager.getKey();
+    if (!userKey) {
+      showToast('Cần có API Key cá nhân để dùng tính năng AI Tìm Sách.', 'error');
+      return;
+    }
+    setAiSearching(true);
+    setAiResults([]);
+    try {
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey: userKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: { parts: [{ text: `Bạn là chuyên gia sách. Người dùng muốn: "${aiSearchGoal}".
+Hãy gợi ý 8 cuốn sách PHÙ HỢP NHẤT (ưu tiên sách nổi tiếng, bán chạy, có bản tiếng Việt).
+OUTPUT (JSON, Vietnamese):
+[{"title":"Tên sách gốc","author":"Tên tác giả","reason":"Lý do 1-2 câu vì sao phù hợp"}]
+CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
+        config: { responseMimeType: 'application/json', temperature: 0.5, maxOutputTokens: 4096 }
+      });
+      let text = response.text || '[]';
+      const startIdx = text.indexOf('[');
+      const endIdx = text.lastIndexOf(']') + 1;
+      if (startIdx !== -1 && endIdx > startIdx) text = text.substring(startIdx, endIdx);
+      const results = JSON.parse(text);
+      setAiResults(Array.isArray(results) ? results.slice(0, 10) : []);
+      if (results.length === 0) showToast('AI không tìm thấy sách phù hợp. Thử mô tả khác.', 'info');
+    } catch (err: any) {
+      showToast(`Lỗi AI: ${err.message}`, 'error');
+    } finally {
+      setAiSearching(false);
+    }
+  };
+
+  const handleAiAddBook = async (idx: number, book: { title: string; author: string }) => {
+    setAiAdding(prev => new Set(prev).add(idx));
+    try {
+      onAddBook(book.title, book.author, '', []);
+      showToast(`Đã thêm "${book.title}" vào kho sách.`, 'success');
+    } catch {
+      showToast('Lỗi khi thêm sách.', 'error');
+    } finally {
+      setAiAdding(prev => { const n = new Set(prev); n.delete(idx); return n; });
+    }
+  };
+
+  // ═══ Batch Analyze: Phân tích hàng loạt (Admin) ═══
+  const toggleBatchSelect = (bookId: string) => {
+    setBatchSelected(prev => {
+      const n = new Set(prev);
+      n.has(bookId) ? n.delete(bookId) : n.add(bookId);
+      return n;
+    });
+  };
+
+  const selectAllUnanalyzed = () => {
+    const unanalyzed = filteredMasterList.filter(b => !b.isSummarized).map(b => b.id);
+    setBatchSelected(new Set(unanalyzed));
+  };
+
+  const handleBatchAnalyze = async () => {
+    if (batchSelected.size === 0) return;
+    const userKey = apiKeyManager.getKey();
+    if (!userKey) {
+      showToast('Cần API Key cá nhân để phân tích hàng loạt.', 'error');
+      return;
+    }
+    if (!window.confirm(`Phân tích ${batchSelected.size} cuốn sách? Mỗi cuốn tốn ~3 API calls.`)) return;
+
+    setBatchRunning(true);
+    const bookIds = Array.from(batchSelected);
+    const total = bookIds.length;
+    let completed = 0;
+
+    for (const bookId of bookIds) {
+      const book = allBooks.find(b => b.id === bookId);
+      if (!book || book.isSummarized) { completed++; continue; }
+
+      setBatchProgress({ current: completed + 1, total, currentTitle: book.title });
+
+      try {
+        const result = await geminiService.processBookFull(book.title, book.author, 'Trích xuất tri thức tối ưu và lộ trình thực thi');
+        await bookService.upsertBook({ ...book, isSummarized: true, analysis: result });
+        completed++;
+        showToast(`✅ ${completed}/${total}: "${book.title}"`, 'success');
+      } catch (err: any) {
+        completed++;
+        showToast(`❌ Lỗi "${book.title}": ${err.message?.substring(0, 80)}`, 'error');
+        // Nếu lỗi API key → dừng hẳn
+        if (err.message?.includes('API_KEY_ERROR') || err.message?.includes('expired')) break;
+        // Đợi 5s giữa các cuốn để tránh rate limit
+      }
+      // Delay giữa mỗi cuốn
+      if (completed < total) await new Promise(r => setTimeout(r, 3000));
+    }
+
+    setBatchRunning(false);
+    setBatchMode(false);
+    setBatchSelected(new Set());
+    showToast(`Hoàn tất phân tích ${completed}/${total} cuốn.`, 'success');
+    // Reload data
+    window.location.reload();
+  };
+
   return (
     <div className="space-y-4 md:space-y-6 animate-in fade-in pb-20">
       {/* Search Header - Stack on mobile */}
@@ -180,6 +303,13 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
               className="w-full pl-9 pr-3 py-2.5 bg-[#121317] border border-[#2F3034] rounded-xl text-[11px] text-white outline-none focus:border-amber-600/40 transition-all"
             />
           </div>
+
+          <button
+            onClick={() => setShowAiSearch(true)}
+            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-4 py-2.5 rounded-xl text-[9px] md:text-[10px] font-medium uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shrink-0"
+          >
+            <Sparkles size={14} /> <span className="hidden sm:inline">AI TÌM SÁCH</span>
+          </button>
 
           <button
             onClick={() => { setFormData({ title: '', author: '', coverImage: '', tags: [] }); setShowAddModal(true); }}
@@ -220,6 +350,35 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
             </button>
           ))}
         </div>
+
+        {/* Admin: Batch Analyze */}
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            {batchMode ? (
+              <>
+                <button onClick={selectAllUnanalyzed} className="px-3 py-2 bg-purple-600/10 text-purple-400 rounded-lg text-[10px] font-medium border border-purple-500/20 hover:bg-purple-600/20 transition-all">
+                  Chọn tất cả chưa phân tích
+                </button>
+                <button onClick={handleBatchAnalyze} disabled={batchSelected.size === 0 || batchRunning} className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-[10px] font-medium flex items-center gap-1.5 transition-all disabled:opacity-50">
+                  {batchRunning ? <><Loader2 size={12} className="animate-spin" /> {batchProgress.current}/{batchProgress.total}</> : <><Play size={12} /> Phân tích ({batchSelected.size})</>}
+                </button>
+                <button onClick={() => { setBatchMode(false); setBatchSelected(new Set()); }} className="px-3 py-2 bg-white/5 text-slate-400 rounded-lg text-[10px] font-medium border border-white/10 hover:text-white transition-all">Hủy</button>
+              </>
+            ) : (
+              <button onClick={() => setBatchMode(true)} className="px-3 py-2 bg-purple-600/10 text-purple-400 rounded-lg text-[10px] font-medium border border-purple-500/20 hover:bg-purple-600/20 transition-all flex items-center gap-1.5">
+                <Brain size={12} /> Batch Analyze
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Batch progress banner */}
+        {batchRunning && (
+          <div className="w-full px-4 py-2.5 bg-purple-600/10 border border-purple-500/20 rounded-xl flex items-center gap-3 animate-pulse">
+            <Loader2 size={14} className="text-purple-400 animate-spin" />
+            <span className="text-purple-300 text-[10px] font-medium">Đang phân tích {batchProgress.current}/{batchProgress.total}: "{batchProgress.currentTitle}"</span>
+          </div>
+        )}
 
         {/* Sort dropdown */}
         <div className="flex items-center gap-2 ml-auto">
@@ -274,6 +433,15 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
                   <div className="bg-[#3279F9] p-1 rounded md:p-1.5 md:rounded-lg text-white shadow-lg"><Check size={10} /></div>
                 )}
               </div>
+
+              {/* Batch select checkbox (admin) */}
+              {batchMode && !book.isSummarized && (
+                <div className="absolute top-2 left-2 z-20" onClick={(e) => { e.stopPropagation(); toggleBatchSelect(book.id); }}>
+                  <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all ${batchSelected.has(book.id) ? 'bg-purple-600 border-purple-500' : 'bg-black/60 border-white/30 hover:border-purple-400'}`}>
+                    {batchSelected.has(book.id) && <Check size={14} className="text-white" />}
+                  </div>
+                </div>
+              )}
 
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 hidden md:block">
                 <button onClick={(e) => handleEditClick(e, book)} className="p-2 bg-white/10 hover:bg-amber-600 rounded-lg text-white backdrop-blur-md border border-white/10 transition-all">
@@ -420,6 +588,62 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
               </div>
             </div>
             <button onClick={handleAddBook} className="w-full bg-amber-600 hover:bg-amber-500 text-white py-4 md:py-5 rounded-2xl text-[11px] md:text-[12px] font-medium tracking-wide shadow-2xl active:scale-95 transition-all">Hoàn tất lưu</button>
+          </div>
+        </div>
+      )}
+      {/* ═══ AI Search Modal ═══ */}
+      {showAiSearch && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-full max-w-lg bg-[#212226] border border-[#2F3034] rounded-[2rem] p-6 md:p-8 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[85vh] overflow-y-auto scrollbar-none">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-600/10 rounded-xl border border-purple-500/20"><Sparkles size={20} className="text-purple-400" /></div>
+                <h2 className="text-lg font-medium text-white uppercase tracking-tighter">AI Tìm Sách</h2>
+              </div>
+              <button onClick={() => { setShowAiSearch(false); setAiResults([]); setAiSearchGoal(''); }} className="text-slate-600 hover:text-white p-2"><X size={20} /></button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-[9px] font-medium text-slate-600 uppercase tracking-widest ml-1">Mục tiêu / Lĩnh vực của bạn</p>
+                <textarea
+                  value={aiSearchGoal}
+                  onChange={e => setAiSearchGoal(e.target.value)}
+                  placeholder="VD: Tôi muốn học về đầu tư tài chính cho người mới bắt đầu..."
+                  rows={3}
+                  className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-4 text-[12px] text-white outline-none focus:border-purple-500/50 transition-all resize-none"
+                />
+              </div>
+              <button
+                onClick={handleAiSearch}
+                disabled={aiSearching || !aiSearchGoal.trim()}
+                className="w-full py-3.5 rounded-xl font-medium text-[10px] uppercase tracking-widest bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {aiSearching ? <><Loader2 size={14} className="animate-spin" /> AI đang tìm kiếm...</> : <><Sparkles size={14} /> Tìm sách phù hợp</>}
+              </button>
+            </div>
+
+            {aiResults.length > 0 && (
+              <div className="mt-6 space-y-3">
+                <p className="text-[9px] font-medium text-slate-600 uppercase tracking-widest ml-1">Kết quả ({aiResults.length} cuốn)</p>
+                {aiResults.map((r, i) => (
+                  <div key={i} className="p-4 bg-[#121317] border border-[#2F3034] rounded-xl flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-[12px] font-medium leading-snug">{r.title}</p>
+                      <p className="text-slate-500 text-[10px] mt-0.5">{r.author}</p>
+                      <p className="text-purple-400/80 text-[10px] mt-1.5 leading-relaxed">{r.reason}</p>
+                    </div>
+                    <button
+                      onClick={() => handleAiAddBook(i, r)}
+                      disabled={aiAdding.has(i)}
+                      className="shrink-0 px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[9px] font-medium uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {aiAdding.has(i) ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Thêm
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
