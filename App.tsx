@@ -361,6 +361,13 @@ const App: React.FC = () => {
     setIsValidating(true);
     try {
       await geminiService.validateGeminiKey(cleanKey);
+      // Test thực tế: gọi AI để chứng minh key hoạt động
+      let testReply = '';
+      try {
+        testReply = await geminiService.testGeminiKey(cleanKey);
+      } catch {
+        // Key validate OK nhưng test fail — vẫn lưu, cảnh báo user
+      }
       // Chỉ lưu lên Supabase — không còn dùng localStorage
       apiKeyManager.setKey(cleanKey);
       await userService.saveApiKey(cleanKey);
@@ -368,7 +375,12 @@ const App: React.FC = () => {
       setIsSettingsOpen(false);
       // Refresh quota badge sau khi có key riêng
       setFreeQuotaRemaining(null);
-      showToast("Đã kích hoạt API Key cá nhân thành công.", "success");
+      if (testReply) {
+        const short = testReply.length > 80 ? testReply.slice(0, 80) + '...' : testReply;
+        showToast(`API Key hoạt động! AI phản hồi: "${short}"`, "success");
+      } else {
+        showToast("Đã lưu API Key. Chưa thể test kết nối — hãy thử phân tích sách.", "success");
+      }
     } catch (err: any) {
       showToast(`Lỗi: ${err.message}`, "error");
     } finally {

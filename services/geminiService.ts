@@ -422,6 +422,21 @@ export const geminiService = {
     }
   },
 
+  /** Test nhanh API key bằng cách gọi generateContent — chứng minh key hoạt động thực sự */
+  async testGeminiKey(apiKey: string): Promise<string> {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: 'Xin chào! Hãy trả lời bằng 1 câu ngắn gọn bằng tiếng Việt để xác nhận kết nối thành công.',
+      });
+      return response.text?.trim() || 'Kết nối thành công!';
+    } catch (error: any) {
+      console.error("Test key failed:", error);
+      throw new Error(error.message || "Key hợp lệ nhưng không thể gọi AI. Vui lòng thử lại.");
+    }
+  },
+
   /**
    * Quét nhanh mục lục
    */
