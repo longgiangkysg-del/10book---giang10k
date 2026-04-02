@@ -361,11 +361,16 @@ const App: React.FC = () => {
     setIsValidating(true);
     try {
       await geminiService.validateGeminiKey(cleanKey);
-      // Test thực tế: gọi AI để chứng minh key hoạt động
+      // Test thực tế: gọi AI với model thật (gemini-2.5-pro) để phát hiện hết quota sớm
       let testReply = '';
+      let quotaWarning = '';
       try {
         testReply = await geminiService.testGeminiKey(cleanKey);
-      } catch {
+      } catch (testErr: any) {
+        const msg = testErr?.message || '';
+        if (msg.includes('QUOTA_ERROR')) {
+          quotaWarning = msg.replace('QUOTA_ERROR: ', '');
+        }
         // Key validate OK nhưng test fail — vẫn lưu, cảnh báo user
       }
       // Chỉ lưu lên Supabase — không còn dùng localStorage
@@ -375,7 +380,9 @@ const App: React.FC = () => {
       setIsSettingsOpen(false);
       // Refresh quota badge sau khi có key riêng
       setFreeQuotaRemaining(null);
-      if (testReply) {
+      if (quotaWarning) {
+        showToast(quotaWarning, "error");
+      } else if (testReply) {
         const short = testReply.length > 80 ? testReply.slice(0, 80) + '...' : testReply;
         showToast(`API Key hoạt động! AI phản hồi: "${short}"`, "success");
       } else {
