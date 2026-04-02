@@ -153,6 +153,9 @@ export const analysisManager = {
 
             setState({ progress: 'Đang khởi động 3 AI Agent song song...' });
 
+            // Lưu lỗi từ mỗi agent để hiển thị cho user nếu tất cả đều fail
+            const agentErrors: Error[] = [];
+
             // ── Agent 1: Meta (→ Layer 1 Overview) ──────────────────
             const p1 = geminiService.processMetaOnly(bookTitle, author, goal)
                 .then(res => {
@@ -169,6 +172,7 @@ export const analysisManager = {
                 })
                 .catch(err => {
                     console.error('❌ Agent 1 (Meta) failed:', err);
+                    agentErrors.push(err);
                     setAgentStatus('meta', 'error');
                 });
 
@@ -182,6 +186,7 @@ export const analysisManager = {
                 })
                 .catch(err => {
                     console.error('❌ Agent 2 (Knowledge) failed:', err);
+                    agentErrors.push(err);
                     setAgentStatus('knowledge', 'error');
                 });
 
@@ -195,11 +200,12 @@ export const analysisManager = {
                 })
                 .catch(err => {
                     console.error('❌ Agent 3 (Ideas) failed:', err);
+                    agentErrors.push(err);
                     setAgentStatus('ideas', 'error');
                 });
 
             // Chờ tất cả 3 agent xong rồi finalize
-            const results = await Promise.allSettled([p1, p2, p3]);
+            await Promise.allSettled([p1, p2, p3]);
 
             // Kiểm tra nếu TẤT CẢ agent đều lỗi → báo lỗi thay vì trả kết quả rỗng
             const allFailed = state.agentProgress.meta === 'error' &&
@@ -207,10 +213,10 @@ export const analysisManager = {
                 state.agentProgress.ideas === 'error';
 
             if (allFailed) {
-                // Tìm lỗi đầu tiên từ agent để hiển thị
-                const firstError = results
-                    .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-                    .map(r => r.reason?.message || String(r.reason))[0] || 'Tất cả AI Agent đều thất bại.';
+                // Lấy lỗi đầu tiên từ agentErrors (đã được lưu trực tiếp)
+                const firstError = agentErrors.length > 0
+                    ? (agentErrors[0]?.message || String(agentErrors[0]))
+                    : 'Tất cả AI Agent đều thất bại.';
 
                 let errorType: AnalysisErrorType = 'general';
                 if (firstError.includes('API_KEY_ERROR') || firstError.includes('expired') || firstError.includes('API_KEY_INVALID')) errorType = 'api_key';
