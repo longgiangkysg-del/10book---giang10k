@@ -86,6 +86,16 @@ const isApiKeyError = (error: any): boolean => {
     (msg.includes('400') && (msg.includes('key') || msg.includes('invalid')));
 };
 
+/** Phát hiện lỗi hết quota (free tier hoặc paid tier) */
+const isQuotaError = (error: any): boolean => {
+  const msg = (error?.message || String(error)).toLowerCase();
+  return msg.includes('resource_exhausted') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('exceeded your current quota') ||
+    msg.includes('free_quota_exhausted') ||
+    (msg.includes('429') && msg.includes('quota'));
+};
+
 const handleApiError = async (error: any) => {
   const errorMessage = error?.message || String(error);
 
@@ -98,8 +108,8 @@ const handleApiError = async (error: any) => {
     throw new Error("API_KEY_ERROR: Model AI không khả dụng với Key hiện tại. Vui lòng kiểm tra lại Key.");
   }
 
-  if (errorMessage.includes("FREE_QUOTA_EXHAUSTED")) {
-    throw new Error("QUOTA_ERROR: Bạn đã hết lượt phân tích miễn phí tháng này. Nhập API Key cá nhân để tiếp tục sử dụng không giới hạn.");
+  if (isQuotaError(error)) {
+    throw new Error("QUOTA_ERROR: API Key của bạn đã hết quota miễn phí cho model Gemini 2.5 Pro. Vui lòng liên kết thanh toán (billing) trong Google AI Studio hoặc chờ quota reset.");
   }
 
   throw error;
@@ -116,8 +126,8 @@ const retryWithDelay = async <T>(fn: () => Promise<T>, maxRetries = 3, baseDelay
       return await fn();
     } catch (error: any) {
       const msg = error?.message || String(error);
-      // Không retry lỗi API key — chỉ retry lỗi server overload
-      if (isApiKeyError(error)) throw error;
+      // Không retry lỗi API key hoặc quota — chỉ retry lỗi server overload
+      if (isApiKeyError(error) || isQuotaError(error)) throw error;
       const isRetryable = msg.includes('503') || msg.includes('429') || msg.includes('UNAVAILABLE') || msg.includes('high demand');
 
       if (isRetryable && attempt < maxRetries) {
@@ -422,17 +432,20 @@ export const geminiService = {
     }
   },
 
-  /** Test nhanh API key bằng cách gọi generateContent — chứng minh key hoạt động thực sự */
+  /** Test nhanh API key bằng cách gọi generateContent với model thật (gemini-2.5-pro) */
   async testGeminiKey(apiKey: string): Promise<string> {
     try {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: 'Xin chào! Hãy trả lời bằng 1 câu ngắn gọn bằng tiếng Việt để xác nhận kết nối thành công.',
+        model: 'gemini-2.5-pro',
+        contents: 'Trả lời đúng 1 câu ngắn bằng tiếng Việt: "Đã kết nối thành công!"',
       });
       return response.text?.trim() || 'Kết nối thành công!';
     } catch (error: any) {
       console.error("Test key failed:", error);
+      if (isQuotaError(error)) {
+        throw new Error("QUOTA_ERROR: API Key hợp lệ nhưng đã hết quota miễn phí cho Gemini 2.5 Pro. Vui lòng liên kết thanh toán (billing) trong Google AI Studio.");
+      }
       throw new Error(error.message || "Key hợp lệ nhưng không thể gọi AI. Vui lòng thử lại.");
     }
   },

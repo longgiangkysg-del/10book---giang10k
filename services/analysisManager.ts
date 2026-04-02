@@ -225,7 +225,7 @@ export const analysisManager = {
                 const userMessage = errorType === 'api_key'
                     ? 'API Key của bạn không hợp lệ hoặc đã hết hạn. Vui lòng vào Cài đặt để cập nhật Key mới.'
                     : errorType === 'quota'
-                    ? 'Bạn đã hết lượt phân tích miễn phí tháng này. Nhập API Key cá nhân để tiếp tục.'
+                    ? 'API Key đã hết quota miễn phí cho Gemini 2.5 Pro. Vui lòng liên kết thanh toán (billing) trong Google AI Studio hoặc chờ quota reset.'
                     : firstError.replace('API_KEY_ERROR: ', '').replace('QUOTA_ERROR: ', '');
 
                 setState({
