@@ -171,6 +171,22 @@ export const bookService = {
   /**
    * Lấy ảnh bìa của một cuốn sách cụ thể (Lazy Loading)
    */
+  /** Tìm bìa sách tự động từ Tiki / Google Books qua Edge Function */
+  async searchBookCover(title: string, author: string): Promise<{ coverUrl: string | null; source: string | null }> {
+    try {
+      const res = await fetch('https://luhgjdvorwgridljhoar.supabase.co/functions/v1/book-cover-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, author }),
+      });
+      if (!res.ok) return { coverUrl: null, source: null };
+      return await res.json();
+    } catch (err) {
+      console.warn('searchBookCover failed:', err);
+      return { coverUrl: null, source: null };
+    }
+  },
+
   async fetchBookCover(bookId: string) {
     const { data, error } = await supabase
       .from('books')

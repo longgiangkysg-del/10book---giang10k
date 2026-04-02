@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  Plus, Search, X, Edit3, Camera, Library, Trash2, BrainCircuit, Check, Zap
+  Plus, Search, X, Edit3, Camera, Library, Trash2, BrainCircuit, Check, Zap, Loader2
 } from 'lucide-react';
 import { Book } from '../types';
 import { bookService } from '../services/supabaseClient';
@@ -33,7 +33,25 @@ const HomeView: React.FC<HomeViewProps> = ({ books, onSelectBook, onAddBook, onU
   const [formData, setFormData] = useState({
     id: '', title: '', author: '', coverImage: '', tags: [] as string[]
   });
+  const [fetchingCover, setFetchingCover] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const autoFetchCover = async (title: string, author: string) => {
+    if (!title.trim() || showEditModal) return; // Chỉ fetch cho Add, không fetch cho Edit
+    setFetchingCover(true);
+    try {
+      const { coverUrl } = await bookService.searchBookCover(title.trim(), author.trim());
+      if (coverUrl) {
+        setFormData(p => {
+          if (!p.coverImage || !p.coverImage.startsWith('data:')) {
+            return { ...p, coverImage: coverUrl };
+          }
+          return p;
+        });
+      }
+    } catch { /* silent */ }
+    finally { setFetchingCover(false); }
+  };
 
   useEffect(() => {
     bookService.fetchAvailableTags().then(setAvailableTags);
@@ -236,12 +254,17 @@ const HomeView: React.FC<HomeViewProps> = ({ books, onSelectBook, onAddBook, onU
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
               <div onClick={() => fileInputRef.current?.click()} className="aspect-[2/3] bg-[#121317] border-2 border-dashed border-[#2F3034] rounded-2xl md:rounded-[2.5rem] flex items-center justify-center cursor-pointer overflow-hidden group hover:border-blue-600/50 transition-all relative max-w-[200px] md:max-w-none mx-auto w-full">
-                {formData.coverImage ? (
+                {fetchingCover ? (
+                  <div className="text-center">
+                    <Loader2 className="text-blue-500 mx-auto mb-2 animate-spin" size={24} />
+                    <p className="text-[9px] font-medium text-blue-500/70 tracking-wide">Đang tìm bìa...</p>
+                  </div>
+                ) : formData.coverImage ? (
                   <img src={formData.coverImage} className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" />
                 ) : (
                   <div className="text-center">
                     <Camera className="text-slate-800 mx-auto mb-2" size={24} />
-                    <p className="text-[9px] font-medium text-slate-700 uppercase tracking-widest">ẢNH BÌA</p>
+                    <p className="text-[9px] font-medium text-slate-700 uppercase tracking-widest">{showAddModal ? 'ẢNH BÌA (tự động tìm)' : 'ẢNH BÌA'}</p>
                   </div>
                 )}
                 <input
@@ -264,11 +287,11 @@ const HomeView: React.FC<HomeViewProps> = ({ books, onSelectBook, onAddBook, onU
               <div className="space-y-4 md:space-y-6">
                 <div className="space-y-1.5 md:space-y-2">
                   <p className="text-[9px] font-medium text-slate-600 uppercase tracking-widest ml-1">Tên Sách</p>
-                  <input className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-3 md:p-4 text-[12px] md:text-[13px] text-white outline-none focus:border-blue-600" placeholder="..." value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} />
+                  <input className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-3 md:p-4 text-[12px] md:text-[13px] text-white outline-none focus:border-blue-600" placeholder="..." value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} onBlur={() => showAddModal && formData.title.trim() && autoFetchCover(formData.title, formData.author)} />
                 </div>
                 <div className="space-y-1.5 md:space-y-2">
                   <p className="text-[9px] font-medium text-slate-600 uppercase tracking-widest ml-1">Tác giả</p>
-                  <input className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-3 md:p-4 text-[12px] md:text-[13px] text-white outline-none focus:border-blue-600" placeholder="..." value={formData.author} onChange={e => setFormData({ ...formData, author: e.target.value })} />
+                  <input className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-3 md:p-4 text-[12px] md:text-[13px] text-white outline-none focus:border-blue-600" placeholder="..." value={formData.author} onChange={e => setFormData({ ...formData, author: e.target.value })} onBlur={() => showAddModal && formData.title.trim() && autoFetchCover(formData.title, formData.author)} />
                 </div>
                 <div className="space-y-2">
                   <p className="text-[9px] font-medium text-slate-600 uppercase tracking-widest ml-1">Chủ đề</p>

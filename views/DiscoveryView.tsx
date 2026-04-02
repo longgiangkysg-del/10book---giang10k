@@ -56,9 +56,29 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
   const [formData, setFormData] = useState({
     title: '', author: '', coverImage: '', tags: [] as string[]
   });
+  const [fetchingCover, setFetchingCover] = useState(false);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-fetch bìa sách khi có title (và tùy chọn author)
+  const autoFetchCover = async (title: string, author: string) => {
+    if (!title.trim()) return;
+    setFetchingCover(true);
+    try {
+      const { coverUrl } = await bookService.searchBookCover(title.trim(), author.trim());
+      if (coverUrl) {
+        setFormData(p => {
+          // Chỉ set nếu user chưa upload ảnh thủ công (base64)
+          if (!p.coverImage || !p.coverImage.startsWith('data:')) {
+            return { ...p, coverImage: coverUrl };
+          }
+          return p;
+        });
+      }
+    } catch { /* silent */ }
+    finally { setFetchingCover(false); }
+  };
 
   useEffect(() => {
     bookService.fetchAvailableTags().then(setAvailableTags);
@@ -210,7 +230,13 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
   const handleAiAddBook = async (idx: number, book: { title: string; author: string }) => {
     setAiAdding(prev => new Set(prev).add(idx));
     try {
-      onAddBook(book.title, book.author, '', []);
+      // Auto-fetch bìa sách trước khi thêm
+      let coverUrl = '';
+      try {
+        const result = await bookService.searchBookCover(book.title, book.author);
+        coverUrl = result.coverUrl || '';
+      } catch { /* silent */ }
+      onAddBook(book.title, book.author, coverUrl, []);
       showToast(`Đã thêm "${book.title}" vào kho sách.`, 'success');
     } catch {
       showToast('Lỗi khi thêm sách.', 'error');
@@ -567,19 +593,24 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
               <div onClick={() => addFileInputRef.current?.click()} className="aspect-[2/3] bg-[#121317] border-2 border-dashed border-[#2F3034] rounded-2xl flex items-center justify-center cursor-pointer overflow-hidden group hover:border-amber-600/50 transition-all relative max-w-[200px] md:max-w-none mx-auto w-full">
-                {formData.coverImage ? (
+                {fetchingCover ? (
+                  <div className="text-center">
+                    <Loader2 className="text-amber-500 mx-auto mb-2 animate-spin" size={24} />
+                    <p className="text-[9px] font-medium text-amber-500/70 tracking-wide">Đang tìm bìa...</p>
+                  </div>
+                ) : formData.coverImage ? (
                   <img src={formData.coverImage} className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" />
                 ) : (
                   <div className="text-center">
                     <Camera className="text-slate-800 mx-auto mb-2" size={24} />
-                    <p className="text-[9px] font-medium text-slate-700 tracking-wide">Ảnh bìa</p>
+                    <p className="text-[9px] font-medium text-slate-700 tracking-wide">Ảnh bìa (tự động tìm)</p>
                   </div>
                 )}
                 <input type="file" ref={addFileInputRef} className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (file) { try { const compressed = await compressImage(file); setFormData(p => ({ ...p, coverImage: compressed })); } catch (error: any) { showToast(error.message, 'error'); } } }} />
               </div>
               <div className="space-y-4 md:space-y-6">
-                <div className="space-y-1.5"><p className="text-[9px] font-medium text-slate-600 tracking-wide ml-1">Tên sách</p><input className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-3 md:p-4 text-[12px] md:text-[13px] text-white outline-none focus:border-amber-600" placeholder="..." value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} /></div>
-                <div className="space-y-1.5"><p className="text-[9px] font-medium text-slate-600 tracking-wide ml-1">Tác giả</p><input className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-3 md:p-4 text-[12px] md:text-[13px] text-white outline-none focus:border-amber-600" placeholder="..." value={formData.author} onChange={e => setFormData({ ...formData, author: e.target.value })} /></div>
+                <div className="space-y-1.5"><p className="text-[9px] font-medium text-slate-600 tracking-wide ml-1">Tên sách</p><input className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-3 md:p-4 text-[12px] md:text-[13px] text-white outline-none focus:border-amber-600" placeholder="..." value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} onBlur={() => formData.title.trim() && autoFetchCover(formData.title, formData.author)} /></div>
+                <div className="space-y-1.5"><p className="text-[9px] font-medium text-slate-600 tracking-wide ml-1">Tác giả</p><input className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-3 md:p-4 text-[12px] md:text-[13px] text-white outline-none focus:border-amber-600" placeholder="..." value={formData.author} onChange={e => setFormData({ ...formData, author: e.target.value })} onBlur={() => formData.title.trim() && autoFetchCover(formData.title, formData.author)} /></div>
                 <div className="space-y-2"><p className="text-[9px] font-medium text-slate-600 tracking-wide ml-1">Chủ đề</p>
                   <div className="flex flex-wrap gap-2 p-3 bg-[#121317] border border-[#2F3034] rounded-xl min-h-[100px] max-h-[150px] overflow-y-auto scrollbar-none">
                     {availableTags.map(tag => (<button key={tag} onClick={() => toggleTagInForm(tag)} className={`px-2 py-1 md:px-3 md:py-1.5 rounded-lg text-[8px] md:text-[9px] font-medium tracking-wide flex items-center gap-1.5 border transition-all ${formData.tags.includes(tag) ? 'bg-amber-600 border-amber-500 text-white' : 'bg-transparent border-slate-800 text-slate-600'}`}>{tag} {formData.tags.includes(tag) && <Check size={10} />}</button>))}
