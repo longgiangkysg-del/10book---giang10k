@@ -7,6 +7,7 @@ import { Book, Priority } from './types';
 import { bookService, supabase, authService, userService, actionService, sharedKeyService } from './services/supabaseClient';
 import { geminiService } from './services/geminiService';
 import { apiKeyManager } from './services/apiKeyManager';
+import { PROVIDERS, PROVIDER_LIST } from './services/aiProviders';
 import { analysisManager } from './services/analysisManager';
 import HomeView from './views/HomeView';
 import InsightCenter from './views/InsightCenter';
@@ -117,10 +118,12 @@ const App: React.FC = () => {
       setGlobalAnalysisRunning(s.status === 'processing');
     });
   }, []);
-  // API Key state: loaded from Supabase after login (không dùng localStorage nữa)
+  // API Key state: loaded from Supabase after login
   const [manualApiKey, setManualApiKey] = useState('');
   const [isKeyConfigured, setIsKeyConfigured] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
+  // Multi-provider state
+  const [selectedProvider, setSelectedProvider] = useState('gemini');
   const [authorFilter, setAuthorFilter] = useState<string>('');
   // Quota miễn phí: số lượt phân tích miễn phí còn lại hôm nay
   const [freeQuotaRemaining, setFreeQuotaRemaining] = useState<number | null>(null);
@@ -278,12 +281,15 @@ const App: React.FC = () => {
       const profile = await userService.ensureProfile();
       setUserProfile(profile);
 
-      // ⭐ Load API key từ Supabase (nguồn duy nhất — đồng bộ cross-device)
-      const remoteKey = await userService.loadApiKey();
-      if (remoteKey) {
-        apiKeyManager.setKey(remoteKey);
-        setManualApiKey(remoteKey);
-        setIsKeyConfigured(true);
+      // ⭐ Load provider config từ Supabase (multi-provider, backward compat)
+      const providerConfig = await userService.loadProviderConfig();
+      if (providerConfig) {
+        apiKeyManager.loadConfig(providerConfig);
+        const activeId = providerConfig.activeProvider || 'gemini';
+        setSelectedProvider(activeId);
+        const activeKey = providerConfig.keys?.[activeId] || '';
+        setManualApiKey(activeKey);
+        setIsKeyConfigured(activeKey.length > 0);
       } else {
         apiKeyManager.clearKey();
         setManualApiKey('');
@@ -359,50 +365,66 @@ const App: React.FC = () => {
       return;
     }
     setIsValidating(true);
+    const providerName = PROVIDERS[selectedProvider]?.name || selectedProvider;
     try {
-      await geminiService.validateGeminiKey(cleanKey);
-      // Test thực tế: gọi AI với model thật (gemini-2.5-pro) để phát hiện hết quota sớm
+      // Validate key with the selected provider
+      await geminiService.validateProviderKey(selectedProvider, cleanKey);
+
+      // Test thực tế
       let testReply = '';
-      let quotaWarning = '';
       try {
-        testReply = await geminiService.testGeminiKey(cleanKey);
+        testReply = await geminiService.testProviderKey(selectedProvider, cleanKey);
       } catch (testErr: any) {
-        const msg = testErr?.message || '';
-        if (msg.includes('QUOTA_ERROR')) {
-          quotaWarning = msg.replace('QUOTA_ERROR: ', '');
-        }
-        // Key validate OK nhưng test fail — vẫn lưu, cảnh báo user
+        // Key validate OK nhưng test fail — vẫn lưu
       }
-      // Chỉ lưu lên Supabase — không còn dùng localStorage
-      apiKeyManager.setKey(cleanKey);
-      await userService.saveApiKey(cleanKey);
+
+      // Save to apiKeyManager
+      apiKeyManager.setProviderKey(selectedProvider, cleanKey);
+      apiKeyManager.setActiveProvider(selectedProvider);
+
+      // Save full config to Supabase
+      await userService.saveProviderConfig(apiKeyManager.exportConfig());
+      // Backward compat: also save gemini key to legacy column
+      if (selectedProvider === 'gemini') {
+        await userService.saveApiKey(cleanKey);
+      }
+
       setIsKeyConfigured(true);
       setIsSettingsOpen(false);
-      // Refresh quota badge sau khi có key riêng
       setFreeQuotaRemaining(null);
-      if (quotaWarning) {
-        showToast(quotaWarning, "error");
-      } else if (testReply) {
+
+      if (testReply) {
         const short = testReply.length > 80 ? testReply.slice(0, 80) + '...' : testReply;
-        showToast(`API Key hoạt động! AI phản hồi: "${short}"`, "success");
+        showToast(`${providerName} hoạt động! AI: "${short}"`, "success");
       } else {
-        showToast("Đã lưu API Key. Chưa thể test kết nối — hãy thử phân tích sách.", "success");
+        showToast(`Đã lưu ${providerName} API Key.`, "success");
       }
     } catch (err: any) {
-      showToast(`Lỗi: ${err.message}`, "error");
+      showToast(`${providerName}: ${err.message}`, "error");
     } finally {
       setIsValidating(false);
     }
   };
 
   const removeManualKey = async () => {
-    if (window.confirm("Xóa API Key cá nhân sẽ khiến bạn không thể sử dụng AI. Tiếp tục?")) {
-      apiKeyManager.clearKey();
-      await userService.saveApiKey(''); // Xóa trên Supabase
-      setManualApiKey('');
-      setIsKeyConfigured(false);
+    const providerName = PROVIDERS[selectedProvider]?.name || selectedProvider;
+    if (window.confirm(`Xóa API Key của ${providerName}?`)) {
+      apiKeyManager.setProviderKey(selectedProvider, '');
+      // If removing active provider, check if any other provider has key
+      const remaining = apiKeyManager.getConfiguredProviders();
+      if (remaining.length > 0) {
+        apiKeyManager.setActiveProvider(remaining[0]);
+        setSelectedProvider(remaining[0]);
+        setManualApiKey(apiKeyManager.getProviderKey(remaining[0]));
+        setIsKeyConfigured(true);
+      } else {
+        setManualApiKey('');
+        setIsKeyConfigured(false);
+      }
+      await userService.saveProviderConfig(apiKeyManager.exportConfig());
+      if (selectedProvider === 'gemini') await userService.saveApiKey('');
       setIsSettingsOpen(false);
-      showToast("Đã gỡ bỏ API Key cá nhân.", "info");
+      showToast(`Đã gỡ bỏ API Key ${providerName}.`, "info");
     }
   };
 
@@ -662,10 +684,9 @@ const App: React.FC = () => {
                   <div className="flex-1">
                     <p className="text-slate-400 text-[9px] md:text-[10px] leading-relaxed font-medium">
                       {isKeyConfigured
-                        ? "Bạn đang dùng API Key cá nhân. Quyền kiểm soát thuộc về bạn."
-                        : "Nhập Gemini API Key để dùng không giới hạn, hoặc dùng lượt miễn phí tháng này."}
+                        ? `Đang dùng ${PROVIDERS[apiKeyManager.getActiveProvider()]?.name || 'AI'}. Chọn provider bên dưới để thêm/đổi.`
+                        : "Chọn AI Provider và nhập API Key để bắt đầu phân tích sách."}
                     </p>
-                    {/* Quota badge: chỉ hiện khi chưa có key riêng và có shared key */}
                     {!isKeyConfigured && freeQuotaRemaining !== null && (
                       <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wide ${freeQuotaRemaining > 0
                         ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
@@ -674,25 +695,57 @@ const App: React.FC = () => {
                         <span className={`w-1.5 h-1.5 rounded-full ${freeQuotaRemaining > 0 ? 'bg-blue-400 animate-pulse' : 'bg-rose-400'}`} />
                         {freeQuotaRemaining > 0
                           ? `Còn ${freeQuotaRemaining} lượt miễn phí tháng này`
-                          : 'Hết lượt miễn phí tháng này — Nhập key để tiếp tục'}
+                          : 'Hết lượt miễn phí — Nhập key để tiếp tục'}
                       </div>
                     )}
                   </div>
-
                 </div>
+
+                {/* Provider selector chips */}
                 <div className="space-y-2">
-                  <label className="text-[9px] font-medium text-slate-600 uppercase tracking-widest ml-1">Google Gemini API Key</label>
+                  <label className="text-[9px] font-medium text-slate-600 uppercase tracking-widest ml-1">Chọn AI Provider</label>
+                  <div className="flex flex-wrap gap-2">
+                    {PROVIDER_LIST.map(p => {
+                      const hasKey = apiKeyManager.hasProviderKey(p.id);
+                      const isActive = selectedProvider === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setSelectedProvider(p.id);
+                            setManualApiKey(apiKeyManager.getProviderKey(p.id));
+                          }}
+                          className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all border ${isActive
+                            ? 'text-white border-blue-500/50 bg-blue-500/10'
+                            : hasKey
+                              ? 'text-green-400 border-green-500/20 bg-green-500/5 hover:bg-green-500/10'
+                              : 'text-slate-500 border-[#2F3034] hover:border-slate-500/30 hover:text-slate-300'
+                            }`}
+                        >
+                          {hasKey && !isActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5" />}
+                          {p.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* API Key input for selected provider */}
+                <div className="space-y-2">
+                  <label className="text-[9px] font-medium text-slate-600 uppercase tracking-widest ml-1">
+                    {PROVIDERS[selectedProvider]?.name} API Key
+                  </label>
                   <input
                     type="password"
                     value={manualApiKey}
                     onChange={(e) => setManualApiKey(e.target.value)}
-                    placeholder="Dán API Key tại đây..."
+                    placeholder={`Dán ${PROVIDERS[selectedProvider]?.name} API Key...`}
                     disabled={isValidating}
                     className="w-full bg-[#121317] border border-[#2F3034] rounded-xl p-4 text-[13px] text-white outline-none focus:border-blue-500/50 transition-all font-mono"
                   />
                 </div>
-                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors pt-1">
-                  Tạo Key miễn phí tại Google AI Studio <ExternalLink size={12} />
+                <a href={PROVIDERS[selectedProvider]?.keyLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors pt-1">
+                  Tạo Key tại {PROVIDERS[selectedProvider]?.name} <ExternalLink size={12} />
                 </a>
               </div>
               <div className="flex flex-col gap-3">

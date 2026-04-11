@@ -83,7 +83,7 @@ export const userService = {
   },
 
   /**
-   * Lưu Gemini API Key của user vào Supabase (đồng bộ qua mọi thiết bị)
+   * Lưu Gemini API Key của user vào Supabase (backward compat)
    */
   async saveApiKey(apiKey: string): Promise<void> {
     const user = await authService.getCurrentUser();
@@ -95,7 +95,83 @@ export const userService = {
   },
 
   /**
-   * Tải Gemini API Key của user từ Supabase
+   * Lưu toàn bộ cấu hình AI provider (multi-key)
+   */
+  async saveProviderConfig(config: { activeProvider: string; keys: Record<string, string>; selectedModels?: Record<string, string> }): Promise<void> {
+    const user = await authService.getCurrentUser();
+    if (!user) return;
+
+    // Try saving to new column first
+    const payload: any = {
+      ai_provider_config: JSON.stringify(config),
+      updated_at: new Date().toISOString()
+    };
+    if (config.keys?.gemini !== undefined) {
+      payload.gemini_api_key = config.keys.gemini || null;
+    }
+
+    const { error } = await supabase.from('users').update(payload).eq('id', user.id);
+
+    // Fallback: if column doesn't exist yet, save only gemini_api_key
+    if (error?.message?.includes('ai_provider_config')) {
+      console.warn('ai_provider_config column not found, using legacy gemini_api_key only');
+      await supabase.from('users').update({
+        gemini_api_key: config.keys?.gemini || null,
+        updated_at: new Date().toISOString()
+      }).eq('id', user.id);
+    }
+  },
+
+  /**
+   * Tải cấu hình AI provider từ Supabase
+   * Backward compat: nếu chỉ có gemini_api_key cũ, tự chuyển đổi
+   */
+  async loadProviderConfig(): Promise<{ activeProvider: string; keys: Record<string, string>; selectedModels: Record<string, string> } | null> {
+    const user = await authService.getCurrentUser();
+    if (!user) return null;
+    // Try new column first, fallback to legacy
+    let data: any = null;
+    const { data: newData, error: newErr } = await supabase
+      .from('users')
+      .select('gemini_api_key, ai_provider_config')
+      .eq('id', user.id)
+      .single();
+
+    if (newErr?.message?.includes('ai_provider_config')) {
+      // Column doesn't exist yet, use legacy only
+      const { data: legacyData } = await supabase
+        .from('users')
+        .select('gemini_api_key')
+        .eq('id', user.id)
+        .single();
+      data = legacyData;
+    } else {
+      data = newData;
+    }
+
+    if (!data) return null;
+
+    // New format exists
+    if (data.ai_provider_config) {
+      try {
+        return JSON.parse(data.ai_provider_config);
+      } catch { /* fall through to legacy */ }
+    }
+
+    // Legacy: chỉ có gemini_api_key
+    if (data.gemini_api_key) {
+      return {
+        activeProvider: 'gemini',
+        keys: { gemini: data.gemini_api_key },
+        selectedModels: {}
+      };
+    }
+
+    return null;
+  },
+
+  /**
+   * @deprecated Use loadProviderConfig() instead
    */
   async loadApiKey(): Promise<string | null> {
     const user = await authService.getCurrentUser();

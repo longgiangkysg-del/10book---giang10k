@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code analyzer
+scripts/.supabase-session.json
+scripts/analysis-*.json

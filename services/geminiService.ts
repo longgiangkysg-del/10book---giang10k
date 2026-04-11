@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { apiKeyManager } from "./apiKeyManager";
 import { supabase } from "./supabaseClient";
+import { generateContent as callProvider, validateProviderKey, testProviderKey, PROVIDERS, type GenerateConfig } from "./aiProviders";
 
 // URL của Supabase Edge Function (slug: dynamic-responder)
 const PROXY_URL = 'https://luhgjdvorwgridljhoar.supabase.co/functions/v1/dynamic-responder';
@@ -143,13 +144,27 @@ const retryWithDelay = async <T>(fn: () => Promise<T>, maxRetries = 3, baseDelay
 };
 
 // ═══════════════════════════════════════════════════════════
+// UNIFIED AGENT CALL — Uses active provider
+// ═══════════════════════════════════════════════════════════
+const callAgent = async (
+  providerId: string,
+  apiKey: string,
+  prompt: string,
+  config: GenerateConfig
+): Promise<any> => {
+  const rawText = await callProvider(providerId, apiKey, prompt, config);
+  return safeParseGeminiJson(rawText);
+};
+
+// ═══════════════════════════════════════════════════════════
 // AGENT 1: META & OVERVIEW (Tổng quan + Phân tích phê bình)
 // ═══════════════════════════════════════════════════════════
 const processBookMeta = async (
-  ai: GoogleGenAI,
+  ai: GoogleGenAI | null,
   bookTitle: string,
   author: string,
-  goal: string
+  goal: string,
+  providerOverride?: { providerId: string; apiKey: string }
 ) => {
   const prompt = `
 You are an elite Book Analyst AI. Analyze the book's meta-structure and provide critical evaluation.
@@ -212,9 +227,19 @@ OUTPUT (JSON, Vietnamese):
 }
 
 QUALITY: Mọi nhận định phải có dẫn chứng cụ thể. Không khen suông, phê bình thành thật.
+
+CRITICAL: You must output ONLY valid JSON. No markdown fences, no explanation text.
 `;
 
-  const response = await ai.models.generateContent({
+  // Use multi-provider if override provided
+  if (providerOverride) {
+    return callAgent(providerOverride.providerId, providerOverride.apiKey, prompt, {
+      temperature: 0.3, topP: 0.85, maxOutputTokens: 16384, responseFormat: 'json'
+    });
+  }
+
+  // Legacy Gemini path
+  const response = await ai!.models.generateContent({
     model: 'gemini-2.5-pro',
     contents: { parts: [{ text: prompt }] },
     config: {
@@ -233,10 +258,11 @@ QUALITY: Mọi nhận định phải có dẫn chứng cụ thể. Không khen s
 // AGENT 2: KNOWLEDGE ARCHITECTURE (Cấu trúc tri thức chuyên sâu)
 // ═══════════════════════════════════════════════════════════
 const processKnowledgeArchitecture = async (
-  ai: GoogleGenAI,
+  ai: GoogleGenAI | null,
   bookTitle: string,
   author: string,
-  goal: string
+  goal: string,
+  providerOverride?: { providerId: string; apiKey: string }
 ) => {
   const prompt = `
 You are an elite Knowledge Architect AI. Your SOLE mission: Extract and structure ALL knowledge from this book.
@@ -294,9 +320,17 @@ CRITICAL REQUIREMENTS:
 □ Specific examples, not generic statements
 □ Show logical flow between parts
 QUAN TRỌNG: PHẢI sử dụng ký tự xuống hàng (\\n\\n) để phân tách giữa các phần. KHÔNG viết liền một đoạn.
+
+CRITICAL: You must output ONLY valid JSON. No markdown fences, no explanation text.
 `;
 
-  const response = await ai.models.generateContent({
+  if (providerOverride) {
+    return callAgent(providerOverride.providerId, providerOverride.apiKey, prompt, {
+      temperature: 0.2, topP: 0.9, maxOutputTokens: 65536, responseFormat: 'json'
+    });
+  }
+
+  const response = await ai!.models.generateContent({
     model: 'gemini-2.5-pro',
     contents: { parts: [{ text: prompt }] },
     config: {
@@ -315,10 +349,11 @@ QUAN TRỌNG: PHẢI sử dụng ký tự xuống hàng (\\n\\n) để phân tá
 // AGENT 3: IDEA SYSTEM (Hệ thống ý tưởng & Protocol thực hành)
 // ═══════════════════════════════════════════════════════════
 const processIdeaSystem = async (
-  ai: GoogleGenAI,
+  ai: GoogleGenAI | null,
   bookTitle: string,
   author: string,
-  goal: string
+  goal: string,
+  providerOverride?: { providerId: string; apiKey: string }
 ) => {
   const prompt = `
 You are an elite Systems Thinker AI. Your SOLE mission: Extract EVERY actionable framework, model, and idea from this book.
@@ -389,9 +424,17 @@ CRITICAL REQUIREMENTS:
 □ Include BOTH famous frameworks AND hidden gems
 □ Practical enough to implement TODAY
 QUAN TRỌNG: PHẢI sử dụng ký tự xuống hàng (\\n\\n) để phân tách giữa các phần. KHÔNG viết liền một đoạn.
+
+CRITICAL: You must output ONLY valid JSON. No markdown fences, no explanation text.
 `;
 
-  const response = await ai.models.generateContent({
+  if (providerOverride) {
+    return callAgent(providerOverride.providerId, providerOverride.apiKey, prompt, {
+      temperature: 0.2, topP: 0.9, maxOutputTokens: 65536, responseFormat: 'json'
+    });
+  }
+
+  const response = await ai!.models.generateContent({
     model: 'gemini-2.5-pro',
     contents: { parts: [{ text: prompt }] },
     config: {
@@ -481,18 +524,23 @@ export const geminiService = {
    */
   async processBookFull(bookTitle: string, author: string, goal: string) {
     try {
-      const userKey = apiKeyManager.getKey();
+      const providerId = apiKeyManager.getActiveProvider();
+      const userKey = apiKeyManager.getProviderKey(providerId);
 
-      // Nếu user có key riêng → gọi Gemini trực tiếp (nhanh hơn, không giới hạn)
+      // Nếu user có key riêng → gọi AI trực tiếp
       if (userKey) {
-        const ai = new GoogleGenAI({ apiKey: userKey });
-        console.log("🚀 Starting parallel analysis with personal key...");
+        const providerOverride = providerId !== 'gemini' ? { providerId, apiKey: userKey } : undefined;
+        const providerName = PROVIDERS[providerId]?.name || providerId;
+        console.log(`🚀 Starting parallel analysis with ${providerName}...`);
 
-        // Chạy 3 Agent SONG SONG với auto-retry khi bị 503/429
+        // For Gemini, use native SDK; for others, use unified provider
+        const ai = providerId === 'gemini' ? new GoogleGenAI({ apiKey: userKey }) : null;
+
+        // Chạy 3 Agent SONG SONG với auto-retry
         const [metaResult, knowledgeResult, ideaResult] = await Promise.all([
-          retryWithDelay(() => processBookMeta(ai, bookTitle, author, goal))
+          retryWithDelay(() => processBookMeta(ai, bookTitle, author, goal, providerOverride))
             .then(res => {
-              console.log("✅ Agent 1-10 (Meta) completed");
+              console.log("✅ Agent 1 (Meta) completed");
               return res;
             })
             .catch(err => {
@@ -500,19 +548,19 @@ export const geminiService = {
               return null;
             }),
 
-          retryWithDelay(() => processKnowledgeArchitecture(ai, bookTitle, author, goal))
+          retryWithDelay(() => processKnowledgeArchitecture(ai, bookTitle, author, goal, providerOverride))
             .then(res => {
-              console.log("✅ Agent 11-20 (Knowledge) completed -", res?.knowledgeArchitecture?.length || 0, "parts");
+              console.log("✅ Agent 2 (Knowledge) completed -", res?.knowledgeArchitecture?.length || 0, "parts");
               return res;
             })
             .catch(err => {
-              console.error("❌ Agent 11-20 (Knowledge) failed:", err);
+              console.error("❌ Agent 2 (Knowledge) failed:", err);
               return null;
             }),
 
-          retryWithDelay(() => processIdeaSystem(ai, bookTitle, author, goal))
+          retryWithDelay(() => processIdeaSystem(ai, bookTitle, author, goal, providerOverride))
             .then(res => {
-              console.log("✅ Agent 21-30 (Ideas) completed -", res?.ideaSystem?.length || 0, "ideas");
+              console.log("✅ Agent 3 (Ideas) completed -", res?.ideaSystem?.length || 0, "ideas");
               return res;
             })
             .catch(err => {
@@ -523,7 +571,6 @@ export const geminiService = {
 
         // Merge kết quả từ 3 agents
         const mergedResult = {
-          // Từ Agent 1: Meta
           bookMeta: metaResult?.bookMeta || {
             estimatedReadingTime: 0,
             difficultyLevel: "TRUNG BÌNH",
@@ -547,16 +594,17 @@ export const geminiService = {
             forBusy: "",
             ifOnlyOneThing: ""
           },
-
-          // Từ Agent 2: Knowledge Architecture
           knowledgeArchitecture: knowledgeResult?.knowledgeArchitecture || [],
-
-          // Từ Agent 3: Idea System
-          ideaSystem: ideaResult?.ideaSystem || []
+          ideaSystem: ideaResult?.ideaSystem || [],
+          _metadata: {
+            provider: providerName,
+            analyzedAt: new Date().toISOString()
+          }
         };
 
         console.log("🎉 Analysis complete!");
         console.log("📊 Stats:", {
+          provider: providerName,
           knowledgeParts: mergedResult.knowledgeArchitecture.length,
           ideas: mergedResult.ideaSystem.length,
           hasMetaData: !!metaResult
@@ -573,7 +621,7 @@ export const geminiService = {
       }
 
     } catch (error) {
-      console.error("Gemini Critical Error:", error);
+      console.error("AI Critical Error:", error);
       return handleApiError(error);
     }
   },
@@ -583,30 +631,44 @@ export const geminiService = {
    * Tự detect: có key riêng → gọi trực tiếp, không → dùng Edge Function proxy
    */
   async processMetaOnly(bookTitle: string, author: string, goal: string) {
-    const userKey = apiKeyManager.getKey();
+    const providerId = apiKeyManager.getActiveProvider();
+    const userKey = apiKeyManager.getProviderKey(providerId);
     if (userKey) {
-      const ai = new GoogleGenAI({ apiKey: userKey });
-      return retryWithDelay(() => processBookMeta(ai, bookTitle, author, goal));
+      const providerOverride = providerId !== 'gemini' ? { providerId, apiKey: userKey } : undefined;
+      const ai = providerId === 'gemini' ? new GoogleGenAI({ apiKey: userKey }) : null;
+      return retryWithDelay(() => processBookMeta(ai, bookTitle, author, goal, providerOverride));
     }
-    // Không có key riêng → dùng proxy (shared key server-side)
     return callGeminiProxy('meta', bookTitle, author, goal);
   },
 
   async processKnowledgeOnly(bookTitle: string, author: string, goal: string) {
-    const userKey = apiKeyManager.getKey();
+    const providerId = apiKeyManager.getActiveProvider();
+    const userKey = apiKeyManager.getProviderKey(providerId);
     if (userKey) {
-      const ai = new GoogleGenAI({ apiKey: userKey });
-      return retryWithDelay(() => processKnowledgeArchitecture(ai, bookTitle, author, goal));
+      const providerOverride = providerId !== 'gemini' ? { providerId, apiKey: userKey } : undefined;
+      const ai = providerId === 'gemini' ? new GoogleGenAI({ apiKey: userKey }) : null;
+      return retryWithDelay(() => processKnowledgeArchitecture(ai, bookTitle, author, goal, providerOverride));
     }
     return callGeminiProxy('knowledge', bookTitle, author, goal);
   },
 
   async processIdeasOnly(bookTitle: string, author: string, goal: string) {
-    const userKey = apiKeyManager.getKey();
+    const providerId = apiKeyManager.getActiveProvider();
+    const userKey = apiKeyManager.getProviderKey(providerId);
     if (userKey) {
-      const ai = new GoogleGenAI({ apiKey: userKey });
-      return retryWithDelay(() => processIdeaSystem(ai, bookTitle, author, goal));
+      const providerOverride = providerId !== 'gemini' ? { providerId, apiKey: userKey } : undefined;
+      const ai = providerId === 'gemini' ? new GoogleGenAI({ apiKey: userKey }) : null;
+      return retryWithDelay(() => processIdeaSystem(ai, bookTitle, author, goal, providerOverride));
     }
     return callGeminiProxy('ideas', bookTitle, author, goal);
+  },
+
+  // ── Multi-provider validation & testing (delegates to aiProviders) ──
+  async validateProviderKey(providerId: string, apiKey: string): Promise<boolean> {
+    return validateProviderKey(providerId, apiKey);
+  },
+
+  async testProviderKey(providerId: string, apiKey: string): Promise<string> {
+    return testProviderKey(providerId, apiKey);
   }
 };

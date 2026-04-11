@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { analysisManager, AnalysisState, AgentProgress, AnalysisErrorType } from '../services/analysisManager';
 import StarRating from '../components/StarRating';
+import MarkdownText from '../components/MarkdownText';
 import { exportBookToPdf } from '../utils/exportPdf';
 
 interface InsightCenterProps {
@@ -462,9 +463,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
                     <h3 className="text-[11px] font-medium tracking-wide">Central Thesis</h3>
                   </div>
                   <h2 className="text-xl md:text-3xl font-medium text-white leading-tight italic max-w-4xl tracking-tight">"{safeRender(analysis.centralThesis?.oneLiner)}"</h2>
-                  <p className="text-slate-50 leading-relaxed text-sm md:text-lg max-w-4xl border-l border-[#2F3034] pl-6 md:pl-10 py-4 font-medium italic opacity-80 whitespace-pre-line">
-                    {safeRender(analysis.centralThesis?.expanded)}
-                  </p>
+                  <MarkdownText text={safeRender(analysis.centralThesis?.expanded)} className="text-slate-50 leading-relaxed text-sm md:text-lg max-w-4xl border-l border-[#2F3034] pl-6 md:pl-10 py-4 font-medium italic opacity-80" />
                 </div>
               </section>
 
@@ -485,7 +484,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
                       <ul className="space-y-3">
                         {section.data?.map((s: string, i: number) => (
                           <li key={i} className="text-[#E6EAF0] text-sm leading-relaxed flex gap-2">
-                            <span className={`${section.color} opacity-50`}>•</span> {s}
+                            <span className={`${section.color} opacity-50`}>•</span> <MarkdownText text={s} className="inline" />
                           </li>
                         ))}
                       </ul>
@@ -507,9 +506,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
                       <p className="text-[11px] font-medium text-indigo-500 tracking-wide mt-1">Độ tương thích</p>
                     </div>
                     <div className="hidden md:block w-px h-20 bg-indigo-600/20"></div>
-                    <p className="text-slate-300 text-base md:text-xl font-normal leading-relaxed italic opacity-90 max-w-2xl whitespace-pre-line">
-                      {analysis.personalizedInsights?.relevanceExplanation}
-                    </p>
+                    <MarkdownText text={analysis.personalizedInsights?.relevanceExplanation || ''} className="text-slate-300 text-base md:text-xl font-normal leading-relaxed italic opacity-90 max-w-2xl" />
                   </div>
                 </div>
               </section>
@@ -524,7 +521,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
                     <div className="space-y-3">
                       <h4 className="text-[11px] font-medium text-slate-600 tracking-wide">Tóm lược tinh hoa</h4>
-                      <p className="text-[#E6EAF0] text-sm md:text-base leading-relaxed font-normal whitespace-pre-line">{analysis.executiveSummary?.forBusy}</p>
+                      <MarkdownText text={analysis.executiveSummary?.forBusy || ''} className="text-[#E6EAF0] text-sm md:text-base leading-relaxed font-normal" />
                     </div>
                     <div className="space-y-3">
                       <h4 className="text-[11px] font-medium text-slate-600 tracking-wide">Bài học đắt giá</h4>
@@ -564,7 +561,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
                     <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 bg-blue-600/10 border border-blue-600/20 rounded-xl flex items-center justify-center text-blue-500 font-medium text-lg">0{i + 1}</div>
                     <div className="flex-1 space-y-3 md:space-y-4">
                       <h4 className="text-white font-medium text-lg md:text-xl tracking-tight">{part.partTitle}</h4>
-                      <div className="text-[#E6EAF0] leading-relaxed text-sm md:text-base font-normal opacity-90 whitespace-pre-line">{part.content}</div>
+                      <MarkdownText text={part.content || ''} className="text-[#E6EAF0] leading-relaxed text-sm md:text-base font-normal opacity-90" />
                     </div>
                   </div>
                 ))}
@@ -585,13 +582,13 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
                 {analysis.ideaSystem?.map((idea: any, i: number) => (
                   <div key={i} className="bg-[#212226] border border-[#2F3034] p-6 md:p-8 rounded-2xl space-y-5">
                     <h3 className="text-lg md:text-2xl font-medium text-white tracking-tight leading-tight">{idea.name}</h3>
-                    <p className="text-[#E6EAF0] text-sm md:text-base leading-relaxed border-l border-[#2F3034] pl-4 font-normal italic opacity-80 whitespace-pre-line">{idea.description}</p>
+                    <MarkdownText text={idea.description || ''} className="text-[#E6EAF0] text-sm md:text-base leading-relaxed border-l border-[#2F3034] pl-4 font-normal italic opacity-80" />
                     <div className="space-y-2 pt-2">
                       <div className="flex items-center gap-2">
                         <Zap size={14} className="text-blue-500" />
                         <p className="text-[11px] font-medium text-blue-500 tracking-wide">Giao thức</p>
                       </div>
-                      <div className="text-sm md:text-base text-slate-200 leading-relaxed font-normal whitespace-pre-line">{idea.protocol}</div>
+                      <MarkdownText text={idea.protocol || ''} className="text-sm md:text-base text-slate-200 leading-relaxed font-normal" />
                     </div>
                   </div>
                 ))}
