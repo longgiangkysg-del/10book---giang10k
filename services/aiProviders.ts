@@ -64,13 +64,13 @@ export const PROVIDERS: Record<string, AIProvider> = {
   deepseek: {
     id: 'deepseek',
     name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com/v1',
+    baseUrl: 'https://api.deepseek.com',
     keyLink: 'https://platform.deepseek.com/api_keys',
     color: '#0066FF',
     defaultModel: 'deepseek-chat',
     models: [
-      { id: 'deepseek-chat', name: 'DeepSeek V3', maxOutputTokens: 8192, supportsJson: true },
-      { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoning)', maxOutputTokens: 8192, supportsJson: true },
+      { id: 'deepseek-chat', name: 'DeepSeek V3', maxOutputTokens: 16384, supportsJson: true },
+      { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoning)', maxOutputTokens: 16384, supportsJson: true },
     ]
   },
   grok: {
@@ -220,6 +220,11 @@ export const generateContent = async (
 ): Promise<string> => {
   const provider = PROVIDERS[providerId];
   if (!provider) throw new Error(`Unknown provider: ${providerId}`);
+
+  // Auto-inject default model if not specified
+  if (!config.model) {
+    config = { ...config, model: provider.defaultModel };
+  }
 
   switch (providerId) {
     case 'gemini':
