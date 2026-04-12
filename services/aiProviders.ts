@@ -254,12 +254,31 @@ export const validateProviderKey = async (providerId: string, apiKey: string): P
     }
     case 'openai':
     case 'deepseek':
-    case 'grok':
     case 'groq': {
       const res = await fetch(`${provider.baseUrl}/models`, {
         headers: { 'Authorization': `Bearer ${apiKey}` },
       });
       if (!res.ok) throw new Error(`${provider.name} API Key không hợp lệ`);
+      return true;
+    }
+    case 'grok': {
+      // xAI /models may have CORS issues, validate via a minimal chat request
+      const res = await fetch(`${provider.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'grok-3-mini',
+          messages: [{ role: 'user', content: 'Hi' }],
+          max_tokens: 5,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Grok API Key không hợp lệ (${res.status})`);
+      }
       return true;
     }
     case 'claude': {
