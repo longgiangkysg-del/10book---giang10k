@@ -231,7 +231,7 @@ const App: React.FC = () => {
             toc: old?.toc || [],
             keyIdeas: old?.keyIdeas || [],
             models: old?.models || [],
-            checklist: old?.checklist || [],
+            checklist: b.checklist ?? old?.checklist ?? [],
             coverImage: b.cover_image || '',
             isSummarized: b.is_summarized ?? false,
             isReading: old?.isReading || false,
@@ -271,10 +271,11 @@ const App: React.FC = () => {
           importance: 3 as 1 | 2 | 3,
         })),
         models: (analysis?.ideaSystem || []).map((idea: any) => idea.name).filter(Boolean),
-        checklist: (analysis?.personalizedInsights?.customActionPlan || []).map((a: any) => ({
-          task: `${a.timeframe}: ${a.action}`,
-          completed: a.completed || false
-        })),
+        // Giữ nguyên task người dùng tự thêm. Trước đây chỗ này nhồi danh sách hành động
+        // AI (customActionPlan) vào checklist, nhưng ActionTracker đã đọc customActionPlan
+        // thẳng từ analysis rồi — nhồi thêm khiến mỗi task AI hiện hai lần và đè mất task
+        // tự thêm. checklist chỉ chứa task nhập tay, đúng như các view khác vẫn coi.
+        checklist: b.checklist ?? [],
         readingTimeMinutes: (analysis?.bookMeta?.estimatedReadingTime || 0) * 60,
       };
     }));
