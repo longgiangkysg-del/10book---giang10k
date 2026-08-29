@@ -237,7 +237,12 @@ const App: React.FC = () => {
   // Lazy-load analysis khi chọn 1 cuốn sách
   const loadBookAnalysis = useCallback(async (bookId: string) => {
     const analysis = await bookService.fetchBookAnalysis(bookId);
-    if (!analysis) return;
+    // Nạp hụt thì phải nói ra: bỏ qua lặng lẽ khiến màn hình đứng ở vòng xoay
+    // "Đang tải phân tích..." vĩnh viễn, trông hệt như app hỏng.
+    if (!analysis) {
+      showToast("Không tải được phân tích của cuốn này. Thử lại hoặc mở bản công khai.", "error");
+      return;
+    }
 
     setBooks(prev => prev.map(b => {
       if (b.id !== bookId) return b;
@@ -258,7 +263,7 @@ const App: React.FC = () => {
         readingTimeMinutes: (analysis?.bookMeta?.estimatedReadingTime || 0) * 60,
       };
     }));
-  }, []);
+  }, [showToast]);
 
   // Auto-load analysis khi selectedBookId thay đổi
   useEffect(() => {
