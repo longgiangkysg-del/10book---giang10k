@@ -1,14 +1,12 @@
 
 import React, { useState } from 'react';
 import { authService } from '../services/supabaseClient';
-import { Chrome, Mail, Lock, Code2, ArrowRight } from 'lucide-react';
+import { Code2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
 const AuthView: React.FC = () => {
   const { showToast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -20,11 +18,6 @@ const AuthView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleEmailLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    showToast("Tính năng đăng nhập bằng Email đang được cấu hình. Vui lòng sử dụng Google.", "info");
   };
 
   return (
@@ -66,55 +59,10 @@ const AuthView: React.FC = () => {
           )}
         </button>
 
-        {/* Separator */}
-        <div className="flex items-center gap-4 my-8">
-          <div className="h-px bg-white/5 flex-1"></div>
-          <span className="text-[10px] font-medium text-slate-700 uppercase tracking-widest">Hoặc</span>
-          <div className="h-px bg-white/5 flex-1"></div>
-        </div>
-
-        {/* Form Login */}
-        <form onSubmit={handleEmailLogin} className="space-y-6">
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-[10px] font-medium text-slate-500 uppercase tracking-widest ml-1">
-              <Mail size={12} /> Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-[#121317] border border-[#2F3034] rounded-2xl p-4 text-white text-sm outline-none focus:border-[#3279F9]/50 transition-all placeholder:text-slate-800"
-              placeholder="ten@congty.com"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-[10px] font-medium text-slate-500 uppercase tracking-widest ml-1">
-              <Lock size={12} /> Mật khẩu
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-[#121317] border border-[#2F3034] rounded-2xl p-4 text-white text-sm outline-none focus:border-[#3279F9]/50 transition-all placeholder:text-slate-800"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full bg-[#3279F9] hover:bg-[#4A8FFF] text-white py-5 rounded-2xl font-medium text-sm uppercase tracking-widest transition-all shadow-xl shadow-[#3279F9]/20 active:scale-95"
-          >
-            Đăng nhập
-          </button>
-        </form>
-
-        {/* Footer */}
-        <div className="mt-10 text-center">
-          <button className="text-[10px] font-medium text-slate-600 uppercase tracking-widest hover:text-[#3279F9] transition-colors">
-            Chưa có tài khoản? <span className="text-[#3279F9]">Đăng ký ngay</span>
-          </button>
-        </div>
+        {/* Đăng nhập lần đầu tự tạo tài khoản, nên không cần màn đăng ký riêng. */}
+        <p className="mt-6 text-center text-[10px] font-medium text-slate-600 leading-relaxed">
+          Lần đầu đăng nhập, tài khoản của bạn sẽ được tạo tự động.
+        </p>
 
       </div>
 
