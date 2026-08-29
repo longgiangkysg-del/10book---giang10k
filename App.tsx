@@ -60,7 +60,10 @@ const App: React.FC = () => {
   const [selectedBookId, setSelectedBookId] = usePersistedState<string | null>('app_selectedBookId', null);
   const [isSidebarOpen, setIsSidebarOpen] = usePersistedState<boolean>('app_sidebarOpen', true);
   // Persist current layer so user returns to same reading position
-  const [persistedLayer, setPersistedLayer] = usePersistedState<number>('app_activeLayer', 0);
+  // Mặc định phải là một lớp có thật (1 = Overview). Số 0 không ứng với lớp nào,
+  // nên máy nào chưa có giá trị lưu — máy mới, hoặc sau khi đổi tên miền vì
+  // localStorage gắn theo domain — sẽ mở sách ra thấy trắng trơn.
+  const [persistedLayer, setPersistedLayer] = usePersistedState<number>('app_activeLayer', 1);
 
   // Redirect old 'home' tab to 'vault' (merged view)
   useEffect(() => {

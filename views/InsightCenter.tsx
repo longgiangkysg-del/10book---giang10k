@@ -60,13 +60,21 @@ const AgentBadge: React.FC<{ status: AgentProgress[keyof AgentProgress] }> = ({ 
   return null;
 };
 
-const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfile, onOpenSettings, isKeyConfigured, freeQuotaRemaining, onAuthorClick, persistedLayer = 0, onLayerChange }) => {
+/** Id của ba lớp nội dung; giá trị nào ngoài đây cũng khiến màn hình trắng. */
+const LAYER_IDS = [1, 2, 3];
+const DEFAULT_LAYER = 1;
+
+const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfile, onOpenSettings, isKeyConfigured, freeQuotaRemaining, onAuthorClick, persistedLayer = DEFAULT_LAYER, onLayerChange }) => {
   // Subscribe to global analysisManager — survives tab switches
   const [analysisState, setAnalysisState] = useState<AnalysisState>(() => analysisManager.getState());
   const [error, setError] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<AnalysisErrorType>(null);
   const [showErrorPopup, setShowErrorPopup] = useState(false);
-  const [activeLayer, setActiveLayer] = useState(persistedLayer);
+  // Chỉ tin giá trị nằm trong LAYER_IDS: số lưu từ phiên cũ (hoặc mặc định 0 trước đây)
+  // không khớp lớp nào, và khi đó không khối nội dung nào được vẽ — nhìn hệt như mất dữ liệu.
+  const [activeLayer, setActiveLayer] = useState(
+    LAYER_IDS.includes(persistedLayer) ? persistedLayer : DEFAULT_LAYER
+  );
   const [copied, setCopied] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
