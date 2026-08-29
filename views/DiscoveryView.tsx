@@ -449,7 +449,7 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
         {paginatedBooks.map((book) => (
           <div key={book.id} className="group flex flex-col animate-in fade-in">
             <div className="aspect-[2/3] w-full bg-[#212226] border border-[#2F3034] rounded-xl md:rounded-2xl overflow-hidden mb-3 relative shadow-lg group-hover:shadow-amber-900/10 transition-all duration-300">
-              <LazyBookCover bookId={book.id} className="opacity-80 group-hover:opacity-100 transition-all" />
+              <LazyBookCover bookId={book.id} coverUrl={book.coverImage} className="opacity-80 group-hover:opacity-100 transition-all" />
 
               <div className="absolute top-2 left-2 flex gap-2">
                 {book.isSummarized && (

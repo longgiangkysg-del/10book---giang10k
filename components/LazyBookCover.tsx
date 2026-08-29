@@ -4,12 +4,15 @@ import { bookService } from '../services/supabaseClient';
 
 interface LazyBookCoverProps {
   bookId: string;
+  /** URL bìa đã có sẵn từ danh sách sách. Có thì dùng luôn, khỏi gọi API riêng cho từng thẻ. */
+  coverUrl?: string;
   className?: string;
 }
 
-const LazyBookCover: React.FC<LazyBookCoverProps> = ({ bookId, className = '' }) => {
-  const [coverUrl, setCoverUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const LazyBookCover: React.FC<LazyBookCoverProps> = ({ bookId, coverUrl: coverUrlProp, className = '' }) => {
+  const [coverUrl, setCoverUrl] = useState<string | null>(coverUrlProp || null);
+  // Đã có URL từ danh sách thì không phải chờ tải gì cả.
+  const [isLoading, setIsLoading] = useState(!coverUrlProp);
   const [isVisible, setIsVisible] = useState(false);
   const imgRef = useRef<HTMLDivElement>(null);
 
@@ -32,9 +35,9 @@ const LazyBookCover: React.FC<LazyBookCoverProps> = ({ bookId, className = '' })
     return () => observer.disconnect();
   }, [bookId]);
 
-  // Fetch ảnh khi visible
+  // Chỉ gọi API bìa khi danh sách không kèm sẵn URL (đường lùi cho chỗ gọi chưa truyền prop).
   useEffect(() => {
-    if (!isVisible) return;
+    if (!isVisible || coverUrlProp) return;
 
     const loadCover = async () => {
       setIsLoading(true);
@@ -49,7 +52,7 @@ const LazyBookCover: React.FC<LazyBookCoverProps> = ({ bookId, className = '' })
     };
 
     loadCover();
-  }, [bookId, isVisible]);
+  }, [bookId, isVisible, coverUrlProp]);
 
   return (
     <div ref={imgRef} className={`w-full h-full ${className}`}>

@@ -200,7 +200,7 @@ const HomeView: React.FC<HomeViewProps> = ({ books, onSelectBook, onAddBook, onU
         {filteredBooks.map(book => (
           <div key={book.id} className="group flex flex-col animate-in fade-in">
             <div className="aspect-[2/3] w-full bg-[#212226] border border-[#2F3034] rounded-xl md:rounded-2xl overflow-hidden mb-3 relative shadow-lg group-hover:-translate-y-1 md:group-hover:-translate-y-2 transition-all duration-300">
-              <LazyBookCover bookId={book.id} className="opacity-90 group-hover:opacity-100 transition-all duration-500" />
+              <LazyBookCover bookId={book.id} coverUrl={book.coverImage} className="opacity-90 group-hover:opacity-100 transition-all duration-500" />
 
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 hidden md:flex gap-1.5">
                 <button

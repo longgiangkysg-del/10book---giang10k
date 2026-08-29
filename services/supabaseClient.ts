@@ -222,17 +222,21 @@ export const bookService = {
    * Tối ưu: Chỉ select các trường nhẹ, loại bỏ cover_image và analysis (rất lớn) để load nhanh.
    */
   async fetchAllBooks() {
+    // cover_image chỉ là URL ngắn (~95 ký tự) nên kéo kèm ở đây rất nhẹ, đổi lại
+    // bỏ được N+1: trước đó mỗi thẻ sách tự gọi một query bìa riêng (24 request/trang lưới).
+    // Vẫn cố ý KHÔNG kéo analysis — cột đó 50–90 KB/cuốn, để lazy-load lúc mở sách.
     const { data, error } = await supabase
       .from('books')
       .select(`
-        id, 
-        title, 
-        author, 
-        is_summarized, 
-        user_ids, 
-        tags, 
-        priority, 
-        created_at, 
+        id,
+        title,
+        author,
+        is_summarized,
+        user_ids,
+        tags,
+        priority,
+        cover_image,
+        created_at,
         updated_at
       `)
       .order('updated_at', { ascending: false });
