@@ -53,7 +53,7 @@ Deno.serve(async (req: Request) => {
 
         // Build full readable text content for SEO
         const textContent = buildTextContent(title, author, analysis);
-        const siteUrl = Deno.env.get('SITE_URL') || 'https://10k.giauco.vn';
+        const siteUrl = Deno.env.get('SITE_URL') || 'https://10kbook.giauco.vn';
         const canonicalUrl = `${siteUrl}/#/book/${bookId}`;
 
         const html = `<!DOCTYPE html>
@@ -169,5 +169,5 @@ function notFoundHTML(): string {
     return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>Not Found | 10kBook</title></head>
 <body style="font-family:system-ui;text-align:center;padding:80px;background:#121317;color:#fff;">
 <h1>404</h1><p>Cuốn sách này chưa được phân tích hoặc không tồn tại.</p>
-<p><a href="https://10k.giauco.vn" style="color:#3279F9;">← Về 10kBook</a></p></body></html>`;
+<p><a href="https://10kbook.giauco.vn" style="color:#3279F9;">← Về 10kBook</a></p></body></html>`;
 }

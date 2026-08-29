@@ -1,7 +1,7 @@
 /**
  * Export PDF utility — dùng window.print() với custom print CSS
  * Không cần thư viện ngoài, hỗ trợ mọi browser.
- * Footer luôn có link: 10k.giauco.vn
+ * Footer luôn có link: 10kbook.giauco.vn
  */
 
 interface BookAnalysis {
@@ -62,7 +62,7 @@ function nl2p(text: string): string {
 }
 
 export function exportBookToPdf(bookTitle: string, author: string, analysis: BookAnalysis): void {
-    const SITE_URL = '10k.giauco.vn';
+    const SITE_URL = '10kbook.giauco.vn';
     const now = new Date().toLocaleDateString('vi-VN', { year: 'numeric', month: 'long', day: 'numeric' });
 
     // ── Build HTML sections ──────────────────────────────────────
@@ -495,7 +495,7 @@ export function exportBookToPdf(bookTitle: string, author: string, analysis: Boo
   <!-- Footer -->
   <div class="footer">
     <div class="footer-logo">10kBook</div>
-    <p>Báo cáo phân tích tri thức được tạo tự động bởi AI tại <a href="https://10k.giauco.vn" target="_blank">${SITE_URL}</a></p>
+    <p>Báo cáo phân tích tri thức được tạo tự động bởi AI tại <a href="https://${SITE_URL}" target="_blank">${SITE_URL}</a></p>
     <p style="margin-top:4px; font-size:10px; color:#d1d5db;">
       © ${new Date().getFullYear()} ${SITE_URL} · Chia sẻ miễn phí · Không dùng cho mục đích thương mại
     </p>
