@@ -215,26 +215,38 @@ const App: React.FC = () => {
   const loadData = useCallback(async () => {
     try {
       const data = await bookService.fetchAllBooks();
-      const mappedBooks = data.map((b: any) => ({
-        ...b,
-        user_ids: b.user_ids || [],
-        centralThesis: '',
-        toc: [],
-        keyIdeas: [],
-        models: [],
-        checklist: [],
-        coverImage: b.cover_image || '',
-        isSummarized: b.is_summarized ?? false,
-        isReading: false,
-        readingTimeMinutes: 0,
-        addedAt: new Date(b.created_at || Date.now()).getTime(),
-        lastActivity: new Date(b.updated_at || b.created_at || Date.now()).getTime(),
-        analysis: undefined,
-        tags: b.tags || [],
-        savesCount: (b.user_ids || []).length
-      }));
-      setBooks(mappedBooks);
-    } catch (err) { }
+      // Giữ lại analysis (và các trường suy ra từ nó) của cuốn đã mở. loadData chạy
+      // lại mỗi khi quay lại app (visibilitychange); nếu đặt analysis về undefined thì
+      // cuốn đang đọc bị xoá trắng rồi phải tải lại JSON 50–90 KB — đúng cảnh "chuyển
+      // app rồi quay lại thấy màn hình trống". Metadata nhẹ (tên, tag, lượt lưu) vẫn
+      // lấy mới từ server; server là chuẩn cho việc thêm/bớt sách.
+      setBooks(prev => {
+        const cu = new Map<string, any>(prev.map((b: any) => [b.id, b]));
+        return data.map((b: any) => {
+          const old: any = cu.get(b.id);
+          return {
+            ...b,
+            user_ids: b.user_ids || [],
+            centralThesis: old?.centralThesis || '',
+            toc: old?.toc || [],
+            keyIdeas: old?.keyIdeas || [],
+            models: old?.models || [],
+            checklist: old?.checklist || [],
+            coverImage: b.cover_image || '',
+            isSummarized: b.is_summarized ?? false,
+            isReading: old?.isReading || false,
+            readingTimeMinutes: old?.readingTimeMinutes || 0,
+            addedAt: new Date(b.created_at || Date.now()).getTime(),
+            lastActivity: new Date(b.updated_at || b.created_at || Date.now()).getTime(),
+            analysis: old?.analysis,
+            tags: b.tags || [],
+            savesCount: (b.user_ids || []).length
+          };
+        });
+      });
+    } catch (err) {
+      console.error("Lỗi tải danh sách sách:", err);
+    }
   }, []);
 
   // Lazy-load analysis khi chọn 1 cuốn sách
