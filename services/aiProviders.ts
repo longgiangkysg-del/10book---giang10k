@@ -33,6 +33,14 @@ export interface GenerateConfig {
 // PROVIDER DEFINITIONS
 // ═══════════════════════════════════════════════════════════
 
+/**
+ * Model Gemini mặc định cho toàn bộ luồng phân tích.
+ * Đổi ở đây là đổi mọi nơi — trước đây tên model bị chép cứng ở 9 chỗ.
+ * gemini-2.5-pro đã bị Google chặn với project mới (404 "no longer available
+ * to new users"); gemini-3.1-pro-preview là bản thay thế chính thức.
+ */
+export const GEMINI_DEFAULT_MODEL = 'gemini-3.1-pro-preview';
+
 export const PROVIDERS: Record<string, AIProvider> = {
   gemini: {
     id: 'gemini',
@@ -40,9 +48,10 @@ export const PROVIDERS: Record<string, AIProvider> = {
     baseUrl: 'https://generativelanguage.googleapis.com',
     keyLink: 'https://aistudio.google.com/app/apikey',
     color: '#4285F4',
-    defaultModel: 'gemini-2.5-pro',
+    defaultModel: GEMINI_DEFAULT_MODEL,
     models: [
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', maxOutputTokens: 65536, supportsJson: true },
+      { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', maxOutputTokens: 65536, supportsJson: true },
+      { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', maxOutputTokens: 65536, supportsJson: true },
       { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', maxOutputTokens: 65536, supportsJson: true },
       { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Free)', maxOutputTokens: 8192, supportsJson: true },
     ]
@@ -194,7 +203,7 @@ const callGemini = async (
 ): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: config.model || 'gemini-2.5-pro',
+    model: config.model || GEMINI_DEFAULT_MODEL,
     contents: { parts: [{ text: prompt }] },
     config: {
       responseMimeType: config.responseFormat === 'json' ? 'application/json' : undefined,

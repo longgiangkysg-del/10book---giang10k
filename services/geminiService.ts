@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { apiKeyManager } from "./apiKeyManager";
 import { supabase } from "./supabaseClient";
-import { generateContent as callProvider, validateProviderKey, testProviderKey, PROVIDERS, type GenerateConfig } from "./aiProviders";
+import { generateContent as callProvider, validateProviderKey, testProviderKey, PROVIDERS, GEMINI_DEFAULT_MODEL, type GenerateConfig } from "./aiProviders";
 
 // URL của Supabase Edge Function (slug: dynamic-responder)
 const PROXY_URL = 'https://luhgjdvorwgridljhoar.supabase.co/functions/v1/dynamic-responder';
@@ -240,7 +240,7 @@ CRITICAL: You must output ONLY valid JSON. No markdown fences, no explanation te
 
   // Legacy Gemini path
   const response = await ai!.models.generateContent({
-    model: 'gemini-2.5-pro',
+    model: GEMINI_DEFAULT_MODEL,
     contents: { parts: [{ text: prompt }] },
     config: {
       responseMimeType: "application/json",
@@ -331,7 +331,7 @@ CRITICAL: You must output ONLY valid JSON. No markdown fences, no explanation te
   }
 
   const response = await ai!.models.generateContent({
-    model: 'gemini-2.5-pro',
+    model: GEMINI_DEFAULT_MODEL,
     contents: { parts: [{ text: prompt }] },
     config: {
       responseMimeType: "application/json",
@@ -435,7 +435,7 @@ CRITICAL: You must output ONLY valid JSON. No markdown fences, no explanation te
   }
 
   const response = await ai!.models.generateContent({
-    model: 'gemini-2.5-pro',
+    model: GEMINI_DEFAULT_MODEL,
     contents: { parts: [{ text: prompt }] },
     config: {
       responseMimeType: "application/json",
@@ -475,12 +475,12 @@ export const geminiService = {
     }
   },
 
-  /** Test nhanh API key bằng cách gọi generateContent với model thật (gemini-2.5-pro) */
+  /** Test nhanh API key bằng cách gọi generateContent với model thật */
   async testGeminiKey(apiKey: string): Promise<string> {
     try {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: GEMINI_DEFAULT_MODEL,
         contents: 'Trả lời đúng 1 câu ngắn bằng tiếng Việt: "Đã kết nối thành công!"',
       });
       return response.text?.trim() || 'Kết nối thành công!';
@@ -503,7 +503,7 @@ export const geminiService = {
       Chỉ trả về danh sách các chương, mỗi chương trên một dòng. Không thêm lời dẫn. Ngôn ngữ: Tiếng Việt.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: GEMINI_DEFAULT_MODEL,
         contents: { parts: [{ text: prompt }] },
         config: {
           temperature: 0.3,
