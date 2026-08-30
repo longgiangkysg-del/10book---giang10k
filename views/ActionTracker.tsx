@@ -12,9 +12,7 @@ import {
    ArrowRight,
    ChevronRight,
    TrendingUp,
-   Award,
-   Plus,
-   Send
+   Award
 } from 'lucide-react';
 
 interface ActionTrackerProps {
@@ -35,8 +33,6 @@ const removeAccents = (str: any) => {
 const ActionTracker: React.FC<ActionTrackerProps> = ({ books, onUpdateBook }) => {
    const [searchTerm, setSearchTerm] = useState('');
    const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'DONE'>('ALL');
-   const [activeInputBook, setActiveInputBook] = useState<string | null>(null);
-   const [newTaskContent, setNewTaskContent] = useState('');
 
    const roadmaps = useMemo(() => {
       return books.map(book => {
@@ -56,24 +52,6 @@ const ActionTracker: React.FC<ActionTrackerProps> = ({ books, onUpdateBook }) =>
             }
          });
 
-         const manualList = book.checklist || [];
-         manualList.forEach((item: any, index: number) => {
-            if (item) {
-               const content = typeof item === 'object' ? item.task : item;
-               const completed = typeof item === 'object' ? !!item.completed : false;
-               if (content) {
-                  tasks.push({
-                     id: `man-${book.id}-${index}`,
-                     content: content,
-                     timeframe: 'Cá nhân',
-                     completed: completed,
-                     type: 'manual',
-                     originalIndex: index
-                  });
-               }
-            }
-         });
-
          const doneCount = tasks.filter(t => t.completed).length;
          const progress = tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
 
@@ -86,48 +64,24 @@ const ActionTracker: React.FC<ActionTrackerProps> = ({ books, onUpdateBook }) =>
             progress,
             totalTasks: tasks.length
          };
-      }).filter(rm => rm.totalTasks > 0 || rm.bookId === activeInputBook);
-   }, [books, activeInputBook]);
+      }).filter(rm => rm.totalTasks > 0);
+   }, [books]);
 
    const toggleTask = (bookId: string, task: any) => {
       if (!onUpdateBook) return;
       const book = books.find(b => b.id === bookId);
       if (!book) return;
 
+      // Chỉ còn task AI (rút từ phân tích). Đánh dấu hoàn thành = cập nhật cờ completed
+      // trong customActionPlan của analysis, rồi lưu qua analysis.
       const updatedBook = { ...book };
-      if (task.type === 'ai') {
-         const plan = [...(updatedBook.analysis?.personalizedInsights?.customActionPlan || [])];
-         plan[task.originalIndex] = { ...plan[task.originalIndex], completed: !task.completed };
-         updatedBook.analysis = {
-            ...updatedBook.analysis!,
-            personalizedInsights: { ...updatedBook.analysis!.personalizedInsights, customActionPlan: plan }
-         };
-      } else {
-         const list = [...(updatedBook.checklist || [])];
-         const item = list[task.originalIndex];
-         if (typeof item === 'string') {
-            list[task.originalIndex] = { task: item, completed: !task.completed };
-         } else if (item && typeof item === 'object') {
-            list[task.originalIndex] = { ...item, completed: !task.completed };
-         }
-         updatedBook.checklist = list;
-      }
+      const plan = [...(updatedBook.analysis?.personalizedInsights?.customActionPlan || [])];
+      plan[task.originalIndex] = { ...plan[task.originalIndex], completed: !task.completed };
+      updatedBook.analysis = {
+         ...updatedBook.analysis!,
+         personalizedInsights: { ...updatedBook.analysis!.personalizedInsights, customActionPlan: plan }
+      };
       onUpdateBook(updatedBook);
-   };
-
-   const handleAddCustomTask = (bookId: string) => {
-      if (!newTaskContent.trim() || !onUpdateBook) return;
-      const book = books.find(b => b.id === bookId);
-      if (!book) return;
-
-      const updatedBook = { ...book };
-      const currentList = [...(updatedBook.checklist || [])];
-      currentList.push({ task: newTaskContent.trim(), completed: false });
-      updatedBook.checklist = currentList;
-
-      onUpdateBook(updatedBook);
-      setNewTaskContent('');
-      setActiveInputBook(null);
    };
 
    const globalStats = useMemo(() => {
@@ -209,7 +163,7 @@ const ActionTracker: React.FC<ActionTrackerProps> = ({ books, onUpdateBook }) =>
                   return matchesSearch && matchesFilter;
                });
 
-               if (displayTasks.length === 0 && searchTerm && roadmap.bookId !== activeInputBook) return null;
+               if (displayTasks.length === 0 && searchTerm) return null;
 
                return (
                   <div key={roadmap.bookId} className="group px-1 md:px-0">
@@ -231,36 +185,7 @@ const ActionTracker: React.FC<ActionTrackerProps> = ({ books, onUpdateBook }) =>
                               </div>
                            </div>
                         </div>
-
-                        <button
-                           onClick={() => setActiveInputBook(activeInputBook === roadmap.bookId ? null : roadmap.bookId)}
-                           className="bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white px-4 py-2.5 rounded-xl text-[8px] md:text-[10px] font-medium uppercase tracking-widest flex items-center justify-center gap-2 transition-all border border-blue-600/20"
-                        >
-                           <Plus size={14} /> Thêm hành động
-                        </button>
                      </div>
-
-                     {activeInputBook === roadmap.bookId && (
-                        <div className="mb-6 p-4 md:p-6 bg-[#212226] rounded-2xl md:rounded-[2rem] border border-blue-600/30 animate-in slide-in-from-top-4">
-                           <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
-                              <input
-                                 autoFocus
-                                 type="text"
-                                 placeholder="Nhập hành động của bạn..."
-                                 className="flex-1 bg-black/40 border border-[#2F3034] rounded-xl px-4 md:px-6 py-3 md:py-4 text-[11px] md:text-xs text-white outline-none focus:border-blue-500"
-                                 value={newTaskContent}
-                                 onChange={(e) => setNewTaskContent(e.target.value)}
-                                 onKeyDown={(e) => e.key === 'Enter' && handleAddCustomTask(roadmap.bookId)}
-                              />
-                              <button
-                                 onClick={() => handleAddCustomTask(roadmap.bookId)}
-                                 className="bg-blue-600 text-white px-6 py-3 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-all"
-                              >
-                                 <Send size={16} />
-                              </button>
-                           </div>
-                        </div>
-                     )}
 
                      {/* Tasks Grid: 1 column on mobile, 2 on desktop */}
                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">

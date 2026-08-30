@@ -236,7 +236,6 @@ export const bookService = {
         tags,
         priority,
         cover_image,
-        checklist,
         created_at,
         updated_at
       `)
@@ -363,9 +362,6 @@ export const bookService = {
       priority: book.priority || existing?.priority || 'Trung bình',
       cover_image: book.coverImage || existing?.cover_image || '',
       analysis: serializedAnalysis,
-      // Task người dùng tự thêm (Lộ Trình Thực Thi). Cột riêng vì không thuộc analysis;
-      // trước đây không nằm trong payload nên mọi task nhập tay biến mất ngay khi lưu.
-      checklist: book.checklist ?? existing?.checklist ?? [],
       updated_at: new Date().toISOString()
     };
 
