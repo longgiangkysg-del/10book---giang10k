@@ -17,6 +17,7 @@ import AuthView from './views/AuthView';
 import HelpView from './views/HelpView';
 import PublicBookView from './views/PublicBookView';
 import { useToast } from './components/Toast';
+import PauseNotice from './components/PauseNotice';
 
 interface BookWithActivity extends Book {
   lastActivity: number;
@@ -668,6 +669,12 @@ const App: React.FC = () => {
         }
 
         <div className="max-w-[1600px] mx-auto p-4 md:p-8 lg:p-12">
+          {/* Tin nhắn tạm ngưng dự án — chỉ đặt ở tab Kho sách để không chen vào lúc đang đọc sách */}
+          {!isLoading && activeTab === 'vault' && (
+            <div className="max-w-[860px] mb-8">
+              <PauseNotice />
+            </div>
+          )}
           {isLoading ? (
             <div className="h-full flex items-center justify-center min-h-[60vh]"><div className="w-10 h-10 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div></div>
           ) : activeTab === 'help' ? (
