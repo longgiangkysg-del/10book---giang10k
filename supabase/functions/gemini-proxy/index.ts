@@ -158,6 +158,21 @@ Deno.serve(async (req: Request) => {
     }
 });
 
+// Luật nguồn dữ liệu — giữ ĐỒNG BỘ với SOURCE_OF_TRUTH_RULE trong services/geminiService.ts.
+// Thiếu luật này, model từ chối ("chưa có nội dung sách") nhưng vẫn trả đúng khuôn JSON,
+// nên lời từ chối bị lưu thành một phần tri thức.
+const SOURCE_OF_TRUTH_RULE = `
+SOURCE OF TRUTH — READ CAREFULLY:
+You are NOT given the book's full text, and you never will be. Write from your own knowledge
+of this published work. That is the task as designed, not a missing input.
+- NEVER say you need the book's text. Never put a refusal, disclaimer, or apology inside any
+  JSON field — those fields are rendered verbatim to the reader.
+- If the title or author looks misspelled, resolve it to the closest real published book
+  (e.g. "100M Lead" by "Alex Homozi" → "$100M Leads" by Alex Hormozi) and analyse that one.
+- ONLY if you genuinely do not know this book at all, return EXACTLY this and nothing else:
+  {"error": "UNKNOWN_BOOK"}
+`;
+
 // ─── Prompt builder (full prompts, matching geminiService.ts) ────────────
 function buildPrompt(agentType: string, bookTitle: string, author: string, goal: string): string {
     if (agentType === 'meta') {
@@ -170,6 +185,7 @@ READER'S GOAL: "${goal}"
 ═══════════════════════════════════════════════════════════
 
 LANGUAGE: Think in English, output in Vietnamese.
+${SOURCE_OF_TRUTH_RULE}
 
 TASK: Provide book metadata, central thesis, critical analysis, and executive summary.
 
@@ -221,6 +237,7 @@ READER'S GOAL: "${goal}"
 ═══════════════════════════════════════════════════════════
 
 LANGUAGE: Think in English, output in Vietnamese.
+${SOURCE_OF_TRUTH_RULE}
 
 EXTRACTION RULES:
 1. Cover ALL chapters/sections - don't skip any major part
@@ -255,6 +272,7 @@ READER'S GOAL: "${goal}"
 ═══════════════════════════════════════════════════════════
 
 LANGUAGE: Think in English, output in Vietnamese.
+${SOURCE_OF_TRUTH_RULE}
 
 FOR EACH IDEA, PROVIDE:
 1. Name: Tên chính thức hoặc tên mô tả

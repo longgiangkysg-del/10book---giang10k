@@ -51,6 +51,54 @@ const callGeminiProxy = async (
   return json.data;
 };
 
+/**
+ * AI KHÔNG được cấp toàn văn cuốn sách — phải viết từ hiểu biết sẵn có về ấn phẩm.
+ * Thiếu luật này, model hay từ chối ("chưa có nội dung sách") NHƯNG vẫn trả đúng khuôn
+ * JSON, nên app lưu lời từ chối thành một phần tri thức và đánh dấu sách "đã tóm tắt".
+ */
+const SOURCE_OF_TRUTH_RULE = `
+SOURCE OF TRUTH — READ CAREFULLY:
+You are NOT given the book's full text, and you never will be. Write from your own knowledge
+of this published work. That is the task as designed, not a missing input.
+- NEVER say you need the book's text. Never put a refusal, disclaimer, or apology inside any
+  JSON field — those fields are rendered verbatim to the reader.
+- If the title or author looks misspelled, resolve it to the closest real published book
+  (e.g. "100M Lead" by "Alex Homozi" → "$100M Leads" by Alex Hormozi) and analyse that one.
+- ONLY if you genuinely do not know this book at all, return EXACTLY this and nothing else:
+  {"error": "UNKNOWN_BOOK"}
+`;
+
+/** Ngưỡng tối thiểu để coi kết quả là dùng được — prompt đòi 15-30 phần và nhiều ý tưởng. */
+const MIN_KNOWLEDGE_PARTS = 3;
+const MIN_IDEAS = 2;
+
+const UNKNOWN_BOOK_MESSAGE =
+  'UNKNOWN_BOOK: AI không nhận ra cuốn sách này hoặc đã từ chối phân tích. ' +
+  'Kiểm lại tên sách và tên tác giả cho đúng chính tả rồi phân tích lại.';
+
+/**
+ * Chặn kết quả rỗng/từ chối trước khi nó được lưu thành bản phân tích.
+ * Đếm số phần là cách nhận diện chắc chắn hơn dò từ khoá: lời từ chối luôn ra
+ * đúng một phần, còn "không cung cấp" là câu hoàn toàn hợp lệ trong mục hạn chế.
+ */
+const assertAnalysisUsable = (result: any, agent: 'meta' | 'knowledge' | 'ideas' | 'full') => {
+  if (result?.error === 'UNKNOWN_BOOK') throw new Error(UNKNOWN_BOOK_MESSAGE);
+
+  if (agent === 'meta' || agent === 'full') {
+    if (!result?.centralThesis?.oneLiner) throw new Error(UNKNOWN_BOOK_MESSAGE);
+  }
+  if (agent === 'knowledge' || agent === 'full') {
+    const parts = result?.knowledgeArchitecture;
+    if (!Array.isArray(parts) || parts.length < MIN_KNOWLEDGE_PARTS) throw new Error(UNKNOWN_BOOK_MESSAGE);
+  }
+  if (agent === 'ideas' || agent === 'full') {
+    const ideas = result?.ideaSystem;
+    if (!Array.isArray(ideas) || ideas.length < MIN_IDEAS) throw new Error(UNKNOWN_BOOK_MESSAGE);
+  }
+
+  return result;
+};
+
 /** Trích xuất và parse JSON an toàn từ response text của Gemini */
 const safeParseGeminiJson = (rawText: string): any => {
   let text = rawText || '{}';
@@ -175,6 +223,7 @@ READER'S GOAL: "${goal}"
 ═══════════════════════════════════════════════════════════
 
 LANGUAGE: Think in English, output in Vietnamese.
+${SOURCE_OF_TRUTH_RULE}
 
 TASK: Provide book metadata, central thesis, critical analysis, and executive summary.
 
@@ -273,6 +322,7 @@ READER'S GOAL: "${goal}"
 ═══════════════════════════════════════════════════════════
 
 LANGUAGE: Think in English, output in Vietnamese.
+${SOURCE_OF_TRUTH_RULE}
 
 YOUR MISSION:
 Create a comprehensive knowledge map covering EVERY major concept, chapter, and insight from the book.
@@ -364,6 +414,7 @@ READER'S GOAL: "${goal}"
 ═══════════════════════════════════════════════════════════
 
 LANGUAGE: Think in English, output in Vietnamese.
+${SOURCE_OF_TRUTH_RULE}
 
 YOUR MISSION:
 Identify and document ALL frameworks, mental models, techniques, and actionable ideas from the book.
@@ -602,6 +653,7 @@ export const geminiService = {
           }
         };
 
+        assertAnalysisUsable(mergedResult, 'full');
         console.log("🎉 Analysis complete!");
         console.log("📊 Stats:", {
           provider: providerName,
@@ -616,6 +668,7 @@ export const geminiService = {
         // Không có user key → gọi Edge Function (shared key an toàn, server-side)
         console.log("📌 No personal key — using Gemini Proxy (Edge Function)...");
         const result = await callGeminiProxy('full', bookTitle, author, goal);
+        assertAnalysisUsable(result, 'full');
         console.log("🎉 Proxy analysis complete!");
         return result;
       }
@@ -636,9 +689,9 @@ export const geminiService = {
     if (userKey) {
       const providerOverride = providerId !== 'gemini' ? { providerId, apiKey: userKey } : undefined;
       const ai = providerId === 'gemini' ? new GoogleGenAI({ apiKey: userKey }) : null;
-      return retryWithDelay(() => processBookMeta(ai, bookTitle, author, goal, providerOverride));
+      return assertAnalysisUsable(await retryWithDelay(() => processBookMeta(ai, bookTitle, author, goal, providerOverride)), 'meta');
     }
-    return callGeminiProxy('meta', bookTitle, author, goal);
+    return assertAnalysisUsable(await callGeminiProxy('meta', bookTitle, author, goal), 'meta');
   },
 
   async processKnowledgeOnly(bookTitle: string, author: string, goal: string) {
@@ -647,9 +700,9 @@ export const geminiService = {
     if (userKey) {
       const providerOverride = providerId !== 'gemini' ? { providerId, apiKey: userKey } : undefined;
       const ai = providerId === 'gemini' ? new GoogleGenAI({ apiKey: userKey }) : null;
-      return retryWithDelay(() => processKnowledgeArchitecture(ai, bookTitle, author, goal, providerOverride));
+      return assertAnalysisUsable(await retryWithDelay(() => processKnowledgeArchitecture(ai, bookTitle, author, goal, providerOverride)), 'knowledge');
     }
-    return callGeminiProxy('knowledge', bookTitle, author, goal);
+    return assertAnalysisUsable(await callGeminiProxy('knowledge', bookTitle, author, goal), 'knowledge');
   },
 
   async processIdeasOnly(bookTitle: string, author: string, goal: string) {
@@ -658,9 +711,9 @@ export const geminiService = {
     if (userKey) {
       const providerOverride = providerId !== 'gemini' ? { providerId, apiKey: userKey } : undefined;
       const ai = providerId === 'gemini' ? new GoogleGenAI({ apiKey: userKey }) : null;
-      return retryWithDelay(() => processIdeaSystem(ai, bookTitle, author, goal, providerOverride));
+      return assertAnalysisUsable(await retryWithDelay(() => processIdeaSystem(ai, bookTitle, author, goal, providerOverride)), 'ideas');
     }
-    return callGeminiProxy('ideas', bookTitle, author, goal);
+    return assertAnalysisUsable(await callGeminiProxy('ideas', bookTitle, author, goal), 'ideas');
   },
 
   // ── Multi-provider validation & testing (delegates to aiProviders) ──

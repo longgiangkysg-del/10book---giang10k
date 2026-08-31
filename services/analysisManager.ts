@@ -207,6 +207,16 @@ export const analysisManager = {
             // Chờ tất cả 3 agent xong rồi finalize
             await Promise.allSettled([p1, p2, p3]);
 
+            // AI không nhận ra cuốn sách → kết quả của những agent còn lại cũng vô giá trị.
+            // Lưu tiếp chỉ tạo ra một cuốn được đánh dấu "đã tóm tắt" mà rỗng ruột.
+            const unknownBook = agentErrors.find(e => (e?.message || '').includes('UNKNOWN_BOOK'));
+            if (unknownBook) {
+                const message = unknownBook.message.replace('UNKNOWN_BOOK: ', '');
+                setState({ status: 'error', error: message, errorType: 'general', progress: '' });
+                onError?.(bookId, message);
+                return;
+            }
+
             // Kiểm tra nếu TẤT CẢ agent đều lỗi → báo lỗi thay vì trả kết quả rỗng
             const allFailed = state.agentProgress.meta === 'error' &&
                 state.agentProgress.knowledge === 'error' &&
@@ -226,7 +236,7 @@ export const analysisManager = {
                     ? 'API Key của bạn không hợp lệ hoặc đã hết hạn. Vui lòng vào Cài đặt để cập nhật Key mới.'
                     : errorType === 'quota'
                     ? 'API Key đã hết quota miễn phí cho Gemini 2.5 Pro. Vui lòng liên kết thanh toán (billing) trong Google AI Studio hoặc chờ quota reset.'
-                    : firstError.replace('API_KEY_ERROR: ', '').replace('QUOTA_ERROR: ', '');
+                    : firstError.replace('API_KEY_ERROR: ', '').replace('QUOTA_ERROR: ', '').replace('UNKNOWN_BOOK: ', '');
 
                 setState({
                     status: 'error',
@@ -259,7 +269,8 @@ export const analysisManager = {
             // Lọc prefix kỹ thuật ra khỏi message hiển thị cho user
             const userMessage = errorMsg
                 .replace('API_KEY_ERROR: ', '')
-                .replace('QUOTA_ERROR: ', '');
+                .replace('QUOTA_ERROR: ', '')
+                .replace('UNKNOWN_BOOK: ', '');
 
             setState({
                 status: 'error',
