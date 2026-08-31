@@ -66,7 +66,13 @@ def tai_tat_ca():
 
 
 def do_ruot(books):
-    """Trả về danh sách cuốn hỏng kèm lý do. Tải cột analysis theo lô cho nhẹ."""
+    """
+    Trả về cuốn HỎNG: mang cờ "đã phân tích" mà ruột rỗng hoặc thiếu nửa.
+
+    Cuốn chưa phân tích (is_summarized = false) KHÔNG tính là hỏng — chúng chỉ
+    là chưa chạy. Gộp hai nhóm thì báo cáo thổi từ 31 lên 376 cuốn "hỏng".
+    """
+    books = [b for b in books if b['is_summarized']]
     hong = []
     for i in range(0, len(books), 20):
         lot = books[i:i + 20]
@@ -106,8 +112,10 @@ def xac_nhan(cau: str):
 
 def lenh_soat():
     books = tai_tat_ca()
+    da = [b for b in books if b['is_summarized']]
     hong = do_ruot(books)
-    print(f'{len(books)} cuốn · {len(hong)} cuốn hỏng\n')
+    print(f'{len(books)} cuốn trong kho · {len(da)} đã phân tích · '
+          f'{len(books) - len(da)} chưa phân tích · {len(hong)} hỏng\n')
     for i, b in enumerate(hong, 1):
         print(f"{i:2}. {b['title']} — {b['author'] or '—'}")
         print(f"    {b['ly_do']} · {APP}{b['id']}")
@@ -118,10 +126,7 @@ def lenh_go_co():
     hong = lenh_soat()
     if not hong:
         return
-    chua_go = [b for b in hong if b['is_summarized']]
-    if not chua_go:
-        print('\nCả danh sách đã ở trạng thái chưa phân tích rồi.')
-        return
+    chua_go = hong   # do_ruot đã lọc, mọi cuốn ở đây đều còn mang cờ
     print()
     xac_nhan(f'Gỡ cờ "đã phân tích" của {len(chua_go)} cuốn? Nội dung cũ giữ nguyên.')
     ids = ','.join(b['id'] for b in chua_go)
