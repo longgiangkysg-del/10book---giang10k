@@ -29,3 +29,6 @@ scripts/analysis-*.json
 
 # Claude Code local state (chứa cả worktree = bản sao repo)
 .claude/
+
+# Supabase CLI local state
+supabase/.temp/
