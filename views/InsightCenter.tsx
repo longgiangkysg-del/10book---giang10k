@@ -346,7 +346,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
       {/* Thanh đầu trang — gộp tên sách, nút thao tác và tab vào MỘT khối dính,
           nhường phần còn lại của màn hình cho nội dung đọc.
           flex-wrap: màn hẹp thì hàng tab tự xuống dòng, không phải nhân đôi markup. */}
-      <div className="sticky top-0 z-30 -mx-4 px-4 md:mx-0 md:px-0 bg-[#121317]/95 backdrop-blur-xl border-b border-[#2F3034] mb-5">
+      <div className="sticky top-0 z-30 -mx-4 px-4 md:mx-0 md:px-0 bg-[#121317] border-b border-[#2F3034] mb-5">
         {isProcessing && (
           <div className="flex items-center gap-3 mt-3 px-4 py-2.5 rounded-xl bg-blue-600/10 border border-blue-600/20 text-[11px]">
             <Sparkles size={13} className="text-blue-400 animate-spin shrink-0" />
@@ -577,10 +577,6 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
         {activeLayer === 2 && (
           isProcessing && ap.knowledge !== 'done' ? <ArchSkeleton /> : (
             <section className="space-y-6 md:space-y-8 text-left">
-              <div className="flex items-center gap-3 md:gap-4">
-                <div className="p-2 md:p-3 bg-blue-600/10 rounded-xl border border-blue-600/20"><List size={20} className="text-blue-500" /></div>
-                <h3 className="text-[11px] font-medium text-white tracking-wide">Knowledge Architecture</h3>
-              </div>
               <div className="grid grid-cols-1 gap-6 md:gap-8">
                 {analysis.knowledgeArchitecture?.map((part: any, i: number) => (
                   <div key={i} className="group flex flex-col md:flex-row gap-4 md:gap-8 p-6 md:p-8 bg-[#212226] rounded-2xl border border-[#2F3034] hover:border-blue-600/30 transition-all">

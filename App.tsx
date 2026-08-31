@@ -17,6 +17,7 @@ import AuthView from './views/AuthView';
 import HelpView from './views/HelpView';
 import PublicBookView from './views/PublicBookView';
 import { useToast } from './components/Toast';
+import { DEV_PREVIEW, DEV_PREVIEW_SESSION } from './services/dev-preview';
 
 interface BookWithActivity extends Book {
   lastActivity: number;
@@ -196,6 +197,16 @@ const App: React.FC = () => {
   useEffect(() => {
     apiKeyManager.clearKey();
     setIsKeyConfigured(false);
+
+    // Chế độ xem thử lúc phát triển: vào thẳng app bằng một phiên giả, không
+    // gọi Supabase Auth. Bản build thật không có nhánh này (xem services/dev-preview.ts).
+    if (DEV_PREVIEW) {
+      setSession(DEV_PREVIEW_SESSION);
+      setIsAdmin(true);
+      loadData().finally(() => setIsLoading(false));
+      loadActivities();
+      return;
+    }
 
     (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
       setSession(session);
