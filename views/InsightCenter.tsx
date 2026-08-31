@@ -341,53 +341,12 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
         </div>
       )}
 
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-[#2F3034] pb-6 md:pb-8 gap-4 mb-6">
-        <div className="space-y-2 md:space-y-3 text-left">
-          <h1 className="text-2xl md:text-4xl font-medium text-white tracking-tight leading-tight">{book.title}</h1>
-          <p className="text-slate-500 text-sm md:text-base font-normal tracking-normal">
-            Tác giả: {onAuthorClick ? (
-              <button onClick={() => onAuthorClick(book.author)} className="text-blue-400 hover:text-blue-300 hover:underline transition-colors">{book.author}</button>
-            ) : (
-              <span className="text-white">{book.author}</span>
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Export PDF Button */}
-          <button
-            onClick={() => exportBookToPdf(book.title, book.author, analysis)}
-            title="Xuất PDF"
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-medium uppercase tracking-wider border bg-[#212226] border-[#2F3034] text-slate-400 hover:text-white hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all touch-manipulation"
-          >
-            <Download size={14} />
-            <span className="hidden sm:inline">Xuất PDF</span>
-          </button>
-          <button
-            onClick={handleShare}
-            title="Sao chép link chia sẻ"
-            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-medium uppercase tracking-wider border transition-all touch-manipulation ${copied
-              ? 'bg-green-500/10 border-green-500/20 text-green-400'
-              : 'bg-[#212226] border-[#2F3034] text-slate-400 hover:text-white hover:border-blue-500/30'
-              }`}
-          >
-            {copied ? (
-              <><CheckCircle2 size={14} /> <span className="hidden sm:inline">Link đã sao chép!</span></>
-            ) : (
-              <><ExternalLink size={14} /> <span className="hidden sm:inline">Chia sẻ</span></>
-            )}
-          </button>
-          <button onClick={() => runAdvancedAnalysis(true)} className="p-3 bg-[#212226] border border-[#2F3034] rounded-xl text-slate-500 hover:text-white shrink-0 touch-manipulation">
-            <RefreshCw size={18} />
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Bar - Sticky at top */}
-      <div className="sticky top-0 z-30 pt-4 pb-4 bg-[#121317]/95 backdrop-blur-xl mb-6 -mx-4 px-4 md:mx-0 md:px-0">
-        {/* Processing inline banner */}
+      {/* Thanh đầu trang — gộp tên sách, nút thao tác và tab vào MỘT khối dính,
+          nhường phần còn lại của màn hình cho nội dung đọc.
+          flex-wrap: màn hẹp thì hàng tab tự xuống dòng, không phải nhân đôi markup. */}
+      <div className="sticky top-0 z-30 -mx-4 px-4 md:mx-0 md:px-0 bg-[#121317]/95 backdrop-blur-xl border-b border-[#2F3034] mb-5">
         {isProcessing && (
-          <div className="flex items-center gap-3 mb-3 px-4 py-2.5 rounded-xl bg-blue-600/10 border border-blue-600/20 text-[11px]">
+          <div className="flex items-center gap-3 mt-3 px-4 py-2.5 rounded-xl bg-blue-600/10 border border-blue-600/20 text-[11px]">
             <Sparkles size={13} className="text-blue-400 animate-spin shrink-0" />
             <span className="text-blue-300 font-medium flex-1">{analysisState.progress || 'AI đang phân tích...'}</span>
             <span className="text-slate-600 font-mono text-[10px]">
@@ -396,21 +355,68 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
             <span className="text-slate-700 text-[10px] hidden sm:inline">· Bạn có thể chuyển tab</span>
           </div>
         )}
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-none p-1.5 bg-[#18191D] rounded-2xl border border-[#2F3034] shadow-sm mask-fade-right">
-          {layers.map((layer) => (
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+          {/* Tên sách + tác giả */}
+          <div className="min-w-0 flex-1 order-1">
+            <h1 className="text-base md:text-lg font-medium text-white tracking-tight truncate leading-snug">{book.title}</h1>
+            <p className="text-[11px] text-slate-500 truncate">
+              {onAuthorClick ? (
+                <button onClick={() => onAuthorClick(book.author)} className="text-blue-400 hover:text-blue-300 hover:underline transition-colors">{book.author}</button>
+              ) : (
+                <span className="text-slate-400">{book.author}</span>
+              )}
+            </p>
+          </div>
+
+          {/* Nút thao tác — chỉ icon, nhãn nằm ở tooltip */}
+          <div className="flex items-center gap-1.5 shrink-0 order-2">
             <button
-              key={layer.id}
-              onClick={() => handleLayerChange(layer.id)}
-              className={`flex items-center gap-2 px-3 md:px-4 py-2.5 rounded-xl text-[11px] md:text-[12px] font-medium whitespace-nowrap transition-all shrink-0 touch-manipulation ${activeLayer === layer.id
-                ? 'bg-[#3279F9] text-white shadow-lg'
-                : 'text-[#B2BBC5] hover:text-white hover:bg-white/5'
+              onClick={() => exportBookToPdf(book.title, book.author, analysis)}
+              title="Xuất PDF"
+              aria-label="Xuất PDF"
+              className="p-2.5 rounded-xl border bg-[#212226] border-[#2F3034] text-slate-400 hover:text-white hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all touch-manipulation"
+            >
+              <Download size={16} />
+            </button>
+            <button
+              onClick={handleShare}
+              title={copied ? 'Đã sao chép link!' : 'Sao chép link chia sẻ'}
+              aria-label="Sao chép link chia sẻ"
+              className={`p-2.5 rounded-xl border transition-all touch-manipulation ${copied
+                ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                : 'bg-[#212226] border-[#2F3034] text-slate-400 hover:text-white hover:border-blue-500/30'
                 }`}
             >
-              <layer.icon size={14} className={activeLayer === layer.id ? 'opacity-100' : 'opacity-70'} />
-              <span>{layer.label}</span>
-              {isProcessing && <AgentBadge status={ap[layerAgentKey[layer.id]]} />}
+              {copied ? <CheckCircle2 size={16} /> : <ExternalLink size={16} />}
             </button>
-          ))}
+            <button
+              onClick={() => runAdvancedAnalysis(true)}
+              title="Phân tích lại"
+              aria-label="Phân tích lại"
+              className="p-2.5 bg-[#212226] border border-[#2F3034] rounded-xl text-slate-500 hover:text-white touch-manipulation"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
+
+          {/* Tab — màn rộng nằm cùng hàng, màn hẹp tự xuống dòng riêng */}
+          <div className="order-3 w-full lg:w-auto lg:order-2 flex gap-1.5 overflow-x-auto scrollbar-none p-1 bg-[#18191D] rounded-xl border border-[#2F3034]">
+            {layers.map((layer) => (
+              <button
+                key={layer.id}
+                onClick={() => handleLayerChange(layer.id)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] md:text-[12px] font-medium whitespace-nowrap transition-all shrink-0 touch-manipulation ${activeLayer === layer.id
+                  ? 'bg-[#3279F9] text-white shadow-lg'
+                  : 'text-[#B2BBC5] hover:text-white hover:bg-white/5'
+                  }`}
+              >
+                <layer.icon size={14} className={activeLayer === layer.id ? 'opacity-100' : 'opacity-70'} />
+                <span>{layer.label}</span>
+                {isProcessing && <AgentBadge status={ap[layerAgentKey[layer.id]]} />}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
