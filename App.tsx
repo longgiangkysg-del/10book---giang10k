@@ -15,7 +15,6 @@ import ActionTracker from './views/ActionTracker';
 import DiscoveryView from './views/DiscoveryView';
 import AuthView from './views/AuthView';
 import HelpView from './views/HelpView';
-import PublicBookView from './views/PublicBookView';
 import { useToast } from './components/Toast';
 import PauseNotice from './components/PauseNotice';
 
@@ -508,11 +507,10 @@ const App: React.FC = () => {
     }
   };
 
+  // Dự án tạm ngưng: khách chưa đăng nhập chỉ thấy tin nhắn, kể cả khi mở link
+  // chia sẻ dạng #/book/ID. Mở lại thì trả nhánh PublicBookView (views/PublicBookView.tsx,
+  // vẫn giữ nguyên) cho publicBookId lấy từ parseHashBookId().
   if (!session && !isLoading) {
-    const publicBookId = parseHashBookId();
-    if (publicBookId) {
-      return <PublicBookView bookId={publicBookId} onLogin={() => authService.signInWithGoogle()} />;
-    }
     return <AuthView />;
   }
 
