@@ -19,6 +19,7 @@ import PublicBookView from './views/PublicBookView';
 import { useToast } from './components/Toast';
 import { DEV_PREVIEW, DEV_PREVIEW_SESSION } from './services/dev-preview';
 import { parseHash, buildHash, DEFAULT_LAYER, type Route, type Overlay } from './services/routing';
+import { readAnalysisCache, writeAnalysisCache } from './utils/analysisCache';
 
 interface BookWithActivity extends Book {
   lastActivity: number;
@@ -43,6 +44,33 @@ function usePersistedState<T>(key: string, defaultValue: T): [T, React.Dispatch<
 
   return [state, setState];
 }
+
+/**
+ * Chạy song song mà vẫn chịu được lỗi lẻ: Promise.all đổ cả cụm chỉ vì một
+ * promise reject, nên mỗi việc phải tự gánh lỗi của mình. Không có lớp này thì
+ * riêng việc tải danh sách hoạt động hỏng cũng đủ làm mất hồ sơ, quota và quyền admin.
+ */
+const nuotLoi = <T,>(viec: Promise<T>, macDinh: T, ten: string): Promise<T> =>
+  viec.catch(err => {
+    console.error(`Lỗi khi ${ten}:`, err);
+    return macDinh;
+  });
+
+/**
+ * Các trường suy ra từ bản phân tích. Tách riêng vì cả loadData (khi làm mới danh
+ * sách) lẫn lúc nạp xong phân tích đều phải dựng chúng — để hai nơi tự viết thì
+ * chỉ cần lệch một trường là màn hình thiếu dữ liệu mà không báo lỗi gì.
+ */
+const suyRaTuAnalysis = (analysis: any) => ({
+  centralThesis: analysis?.centralThesis?.oneLiner || '',
+  keyIdeas: (analysis?.ideaSystem || []).map((idea: any, i: number) => ({
+    id: `k${i}`,
+    description: idea.name || '',
+    importance: 3 as 1 | 2 | 3,
+  })),
+  models: (analysis?.ideaSystem || []).map((idea: any) => idea.name).filter(Boolean),
+  readingTimeMinutes: (analysis?.bookMeta?.estimatedReadingTime || 0) * 60,
+});
 
 const App: React.FC = () => {
   const { showToast } = useToast();
@@ -197,6 +225,11 @@ const App: React.FC = () => {
   // Ref giữ phiên bản mới nhất của handlePostLogin — tránh stale closure trong useEffect mount-only
   const handlePostLoginRef = useRef<() => Promise<void>>();
 
+  // Phân tích đã nạp trong phiên, tách khỏi `books` để nó không phải chờ danh sách sách
+  const analysisRef = useRef<Map<string, any>>(new Map());
+  // Chặn gọi trùng: effect chạy lại (đổi tab, làm mới danh sách) không nên fetch lần nữa
+  const dangTaiRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     apiKeyManager.clearKey();
     setIsKeyConfigured(false);
@@ -238,21 +271,22 @@ const App: React.FC = () => {
         const cu = new Map<string, any>(prev.map((b: any) => [b.id, b]));
         return data.map((b: any) => {
           const old: any = cu.get(b.id);
+          // analysisRef giữ bản đã nạp trong phiên. Cần nó vì phân tích nay được
+          // kéo SONG SONG với danh sách sách: lúc nó về, `books` có thể còn rỗng,
+          // và nếu chỉ trông vào `old` thì kết quả vừa tải xong bị vứt đi.
+          const analysis = old?.analysis ?? analysisRef.current.get(b.id);
           return {
             ...b,
             user_ids: b.user_ids || [],
-            centralThesis: old?.centralThesis || '',
+            ...suyRaTuAnalysis(analysis),
             toc: old?.toc || [],
-            keyIdeas: old?.keyIdeas || [],
-            models: old?.models || [],
             checklist: [],
             coverImage: b.cover_image || '',
             isSummarized: b.is_summarized ?? false,
             isReading: old?.isReading || false,
-            readingTimeMinutes: old?.readingTimeMinutes || 0,
             addedAt: new Date(b.created_at || Date.now()).getTime(),
             lastActivity: new Date(b.updated_at || b.created_at || Date.now()).getTime(),
-            analysis: old?.analysis,
+            analysis,
             tags: b.tags || [],
             savesCount: (b.user_ids || []).length
           };
@@ -263,46 +297,63 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Lazy-load analysis khi chọn 1 cuốn sách
+  /** Đặt bản phân tích vào state, và giữ một bản trong ref cho loadData nhặt lại. */
+  const apDungAnalysis = useCallback((bookId: string, analysis: any) => {
+    analysisRef.current.set(bookId, analysis);
+    setBooks(prev => prev.map(b => b.id === bookId
+      ? {
+          ...b,
+          analysis,
+          ...suyRaTuAnalysis(analysis),
+          // Không nhồi customActionPlan vào checklist: ActionTracker đọc task AI thẳng
+          // từ analysis, chép sang đây thì mỗi task hiện hai lần.
+          checklist: [],
+        }
+      : b));
+  }, []);
+
+  /**
+   * Nạp phân tích của một cuốn: lấy bản trong máy ra dùng ngay, rồi đối chiếu với
+   * server ở phía sau. Cuốn đã xem qua sẽ hiện tức thì thay vì xoay vòng.
+   */
   const loadBookAnalysis = useCallback(async (bookId: string) => {
-    const analysis = await bookService.fetchBookAnalysis(bookId);
-    // Nạp hụt thì phải nói ra: bỏ qua lặng lẽ khiến màn hình đứng ở vòng xoay
-    // "Đang tải phân tích..." vĩnh viễn, trông hệt như app hỏng.
-    if (!analysis) {
-      showToast("Không tải được phân tích của cuốn này. Thử lại hoặc mở bản công khai.", "error");
-      return;
-    }
+    if (dangTaiRef.current.has(bookId)) return;
+    dangTaiRef.current.add(bookId);
+    try {
+      const cache = readAnalysisCache(bookId);
+      if (cache) apDungAnalysis(bookId, cache.analysis);
 
-    setBooks(prev => prev.map(b => {
-      if (b.id !== bookId) return b;
-      return {
-        ...b,
-        analysis,
-        centralThesis: analysis?.centralThesis?.oneLiner || '',
-        keyIdeas: (analysis?.ideaSystem || []).map((idea: any, i: number) => ({
-          id: `k${i}`,
-          description: idea.name || '',
-          importance: 3 as 1 | 2 | 3,
-        })),
-        models: (analysis?.ideaSystem || []).map((idea: any) => idea.name).filter(Boolean),
-        // Không nhồi customActionPlan vào checklist: ActionTracker đọc task AI thẳng từ
-        // analysis, nếu chép sang đây thì mỗi task hiện hai lần. Tính năng task tự thêm
-        // đã bỏ nên checklist luôn rỗng.
-        checklist: [],
-        readingTimeMinutes: (analysis?.bookMeta?.estimatedReadingTime || 0) * 60,
-      };
-    }));
-  }, [showToast]);
+      const res = await bookService.fetchBookAnalysis(bookId);
 
-  // Auto-load analysis khi selectedBookId thay đổi
-  useEffect(() => {
-    if (selectedBookId) {
-      const book = books.find(b => b.id === selectedBookId);
-      if (book && book.isSummarized && !book.analysis) {
-        loadBookAnalysis(selectedBookId);
+      // Cuốn chưa phân tích thì không có gì để nạp — đây là chuyện bình thường,
+      // đừng báo lỗi (màn hình "Sẵn sàng phân tích" mới là thứ người dùng cần thấy).
+      if (res && !res.isSummarized) return;
+
+      // Nạp hụt thì phải nói ra: bỏ qua lặng lẽ khiến màn hình đứng ở vòng xoay
+      // "Đang tải phân tích..." vĩnh viễn, trông hệt như app hỏng. Nhưng nếu đã
+      // có bản trong máy để đọc thì im lặng, kêu lên chỉ làm người dùng hoang mang.
+      if (!res?.analysis) {
+        if (!cache) showToast("Không tải được phân tích của cuốn này. Thử lại hoặc mở bản công khai.", "error");
+        return;
       }
+
+      if (cache && cache.updatedAt === res.updatedAt) return; // bản trong máy vẫn đúng
+      apDungAnalysis(bookId, res.analysis);
+      writeAnalysisCache(bookId, res.analysis, res.updatedAt);
+    } finally {
+      dangTaiRef.current.delete(bookId);
     }
-  }, [selectedBookId, books, loadBookAnalysis]);
+  }, [showToast, apDungAnalysis]);
+
+  // Nạp phân tích NGAY khi biết đang mở cuốn nào — cố ý không chờ `books`.
+  // Trước đây effect này phải tìm cuốn sách trong `books`, nên nó xếp hàng sau cả
+  // kho sách (630 cuốn, ~1,2 MB) dù chẳng cần gì từ đó: vào thẳng Work Zone bằng
+  // link là phải nhìn vòng xoay khoảng 2 giây.
+  useEffect(() => {
+    if (!selectedBookId) return;
+    if (analysisRef.current.has(selectedBookId)) return;
+    loadBookAnalysis(selectedBookId);
+  }, [selectedBookId, loadBookAnalysis]);
 
   const loadActivities = useCallback(async () => {
     const data = await actionService.fetchRecentActions();
@@ -312,11 +363,24 @@ const App: React.FC = () => {
   const handlePostLogin = async () => {
     setIsLoading(true);
     try {
-      const profile = await userService.ensureProfile();
-      setUserProfile(profile);
+      // Sáu việc này không việc nào cần kết quả của việc nào, nhưng trước đây xếp
+      // hàng nối đuôi: hồ sơ → cấu hình khoá → quota → kho sách → hoạt động.
+      // Chạy cùng lúc thì tổng thời gian bằng việc lâu nhất chứ không phải tổng.
+      const [profile, providerConfig, remaining, adminStatus] = await Promise.all([
+        nuotLoi(userService.ensureProfile(), null, 'nạp hồ sơ'),
+        nuotLoi(userService.loadProviderConfig(), null, 'nạp cấu hình khoá AI'),
+        // Đếm hụt thì để null chứ đừng để 0: null nghĩa là "không rõ" và app không
+        // mở đường miễn phí, an toàn hơn là đoán bừa rồi đốt khoá dùng chung.
+        nuotLoi<number | null>(sharedKeyService.getRemainingQuota(), null, 'đếm lượt miễn phí'),
+        nuotLoi(authService.isAdmin(), false, 'kiểm quyền admin'),
+        nuotLoi(loadData(), undefined, 'nạp kho sách'),
+        nuotLoi(loadActivities(), undefined, 'nạp hoạt động gần đây'),
+      ]);
 
-      // ⭐ Load provider config từ Supabase (multi-provider, backward compat)
-      const providerConfig = await userService.loadProviderConfig();
+      setUserProfile(profile);
+      setFreeQuotaRemaining(remaining);
+      setIsAdmin(adminStatus);
+
       if (providerConfig) {
         apiKeyManager.loadConfig(providerConfig);
         const activeId = providerConfig.activeProvider || 'gemini';
@@ -330,16 +394,6 @@ const App: React.FC = () => {
         setIsKeyConfigured(false);
       }
 
-      // Load free quota + admin status
-      const [remaining, adminStatus] = await Promise.all([
-        sharedKeyService.getRemainingQuota(),
-        authService.isAdmin()
-      ]);
-      setFreeQuotaRemaining(remaining);
-      setIsAdmin(adminStatus);
-
-      await loadData();
-      await loadActivities();
     } catch (err) {
       console.error("Lỗi sau khi đăng nhập:", err);
     } finally {

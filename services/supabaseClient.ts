@@ -284,10 +284,17 @@ export const bookService = {
   /**
    * Lấy analysis của một cuốn sách cụ thể (Lazy Loading)
    */
+  /**
+   * Kéo bản phân tích của MỘT cuốn (cột này 50–90 KB nên không nằm trong fetchAllBooks).
+   *
+   * Trả kèm `isSummarized` và `updatedAt` để phía gọi phân biệt được ba cảnh khác nhau:
+   * cuốn chưa phân tích (bình thường), cuốn có đánh dấu mà mất dữ liệu (lỗi thật, phải
+   * báo), và cuốn đã có sẵn trong cache còn đúng hạn (khỏi vẽ lại).
+   */
   async fetchBookAnalysis(bookId: string) {
     const { data, error } = await supabase
       .from('books')
-      .select('analysis')
+      .select('analysis, is_summarized, updated_at')
       .eq('id', bookId)
       .single();
 
@@ -300,7 +307,11 @@ export const bookService = {
     if (typeof analysis === 'string') {
       try { analysis = JSON.parse(analysis); } catch { analysis = null; }
     }
-    return analysis;
+    return {
+      analysis,
+      isSummarized: data?.is_summarized ?? false,
+      updatedAt: data?.updated_at || ''
+    };
   },
 
   async fetchAvailableTags() {
