@@ -26,3 +26,6 @@ dist-ssr
 # Claude Code analyzer
 scripts/.supabase-session.json
 scripts/analysis-*.json
+
+# Claude Code local state (chứa cả worktree = bản sao repo)
+.claude/
