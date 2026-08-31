@@ -5,6 +5,7 @@ import {
 import { Book } from '../types';
 import { bookService } from '../services/supabaseClient';
 import { compressImage } from '../utils/imageUtils';
+import { usePasteImage } from '../utils/usePasteImage';
 import { useToast } from '../components/Toast';
 import LazyBookCover from '../components/LazyBookCover';
 
@@ -35,6 +36,13 @@ const HomeView: React.FC<HomeViewProps> = ({ books, onSelectBook, onAddBook, onU
   });
   const [fetchingCover, setFetchingCover] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Ctrl+V dán ảnh bìa khi modal thêm/sửa đang mở
+  usePasteImage(
+    showAddModal || showEditModal,
+    dataUrl => setFormData(p => ({ ...p, coverImage: dataUrl })),
+    msg => showToast(msg, 'error')
+  );
 
   const autoFetchCover = async (title: string, author: string) => {
     if (!title.trim() || showEditModal) return; // Chỉ fetch cho Add, không fetch cho Edit
@@ -265,6 +273,7 @@ const HomeView: React.FC<HomeViewProps> = ({ books, onSelectBook, onAddBook, onU
                   <div className="text-center">
                     <Camera className="text-slate-800 mx-auto mb-2" size={24} />
                     <p className="text-[9px] font-medium text-slate-700 uppercase tracking-widest">{showAddModal ? 'ẢNH BÌA (tự động tìm)' : 'ẢNH BÌA'}</p>
+                    <p className="text-[8px] font-medium text-slate-700 tracking-wide mt-1">Bấm để chọn · Ctrl+V để dán</p>
                   </div>
                 )}
                 <input

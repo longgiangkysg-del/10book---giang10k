@@ -6,6 +6,7 @@ import { geminiService } from '../services/geminiService';
 import { apiKeyManager } from '../services/apiKeyManager';
 import { analysisManager } from '../services/analysisManager';
 import { compressImage } from '../utils/imageUtils';
+import { usePasteImage } from '../utils/usePasteImage';
 import { useToast } from '../components/Toast';
 import LazyBookCover from '../components/LazyBookCover';
 
@@ -60,6 +61,18 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Ctrl+V dán ảnh bìa — hai modal dùng hai ô state khác nhau nên tách hai lượt đăng ký
+  usePasteImage(
+    showAddModal,
+    dataUrl => setFormData(p => ({ ...p, coverImage: dataUrl })),
+    msg => showToast(msg, 'error')
+  );
+  usePasteImage(
+    showEditModal,
+    dataUrl => setEditData((p: any) => ({ ...p, coverImage: dataUrl })),
+    msg => showToast(msg, 'error')
+  );
 
   // Auto-fetch bìa sách khi có title (và tùy chọn author)
   const autoFetchCover = async (title: string, author: string) => {
@@ -534,6 +547,7 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
                   <div className="text-center">
                     <Camera className="text-slate-800 mx-auto mb-2" size={24} />
                     <p className="text-[9px] font-medium text-slate-700 uppercase tracking-widest">ẢNH BÌA</p>
+                    <p className="text-[8px] font-medium text-slate-700 tracking-wide mt-1">Bấm để chọn · Ctrl+V để dán</p>
                   </div>
                 )}
                 <input
@@ -604,6 +618,7 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
                   <div className="text-center">
                     <Camera className="text-slate-800 mx-auto mb-2" size={24} />
                     <p className="text-[9px] font-medium text-slate-700 tracking-wide">Ảnh bìa (tự động tìm)</p>
+                    <p className="text-[8px] font-medium text-slate-700 tracking-wide mt-1">Bấm để chọn · Ctrl+V để dán</p>
                   </div>
                 )}
                 <input type="file" ref={addFileInputRef} className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (file) { try { const compressed = await compressImage(file); setFormData(p => ({ ...p, coverImage: compressed })); } catch (error: any) { showToast(error.message, 'error'); } } }} />
