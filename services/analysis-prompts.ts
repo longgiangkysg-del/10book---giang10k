@@ -2,7 +2,7 @@
  * Prompt cho 3 agent phân tích sách — MỘT bản dùng chung cho web app
  * (services/geminiService.ts) và script chạy tay (scripts/analyze-books.ts).
  *
- * Bản sao duy nhất còn lại nằm trong supabase/functions/gemini-proxy/index.ts:
+ * Bản sao duy nhất còn lại nằm trong supabase/functions/dynamic-responder/index.ts:
  * Edge Function chạy trên Deno, deploy riêng, không import được từ đây.
  * Sửa prompt ở file này thì sửa luôn bên đó.
  */

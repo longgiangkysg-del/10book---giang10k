@@ -5,7 +5,7 @@ import { generateContent as callProvider, validateProviderKey, testProviderKey, 
 import { buildMetaPrompt, buildKnowledgePrompt, buildIdeasPrompt } from "./analysis-prompts";
 import { assertAnalysisUsable, parseAnalysisJson } from "./analysis-guard";
 
-// URL của Supabase Edge Function (slug: dynamic-responder)
+// URL của Supabase Edge Function — slug phải khớp tên thư mục supabase/functions/
 const PROXY_URL = 'https://luhgjdvorwgridljhoar.supabase.co/functions/v1/dynamic-responder';
 
 /**
