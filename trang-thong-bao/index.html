@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Kho Tri Thức 10K Book tạm ngưng</title>
+  <meta name="description"
+    content="Dự án Kho Tri Thức 10K Book tạm dừng phát triển. Cám ơn anh chị đã đồng hành. Mời anh chị xem các app khác của team." />
+  <meta name="theme-color" content="#121317" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="10K Book" />
+  <meta property="og:title" content="Kho Tri Thức 10K Book tạm ngưng" />
+  <meta property="og:description"
+    content="Dự án tạm dừng phát triển. Cám ơn anh chị đã đồng hành cùng 10K Book suốt thời gian qua." />
+  <meta property="og:url" content="https://10k.giauco.vn" />
+  <meta name="twitter:card" content="summary" />
+
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@8..144,400..500&display=swap"
+    rel="stylesheet">
+
+  <style>
+    /* Hệ màu lấy đúng từ app 10kBook để hai trang nhìn là cùng một nhà. */
+    :root {
+      --bg: #121317;
+      --card: #212226;
+      --surface: #18191D;
+      --line: #2F3034;
+      --text: #E6EAF0;
+      --text-strong: #FFFFFF;
+      --text-mute: #94A0AF;
+      --blue: #3279F9;
+      --blue-hover: #4A8FFF;
+      --amber: #FBBF24;
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 40px 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Google Sans Flex', 'Google Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Hai quầng sáng mờ phía sau, giống nền màn đăng nhập của app. */
+    .aura {
+      position: fixed;
+      width: 70%;
+      height: 70%;
+      border-radius: 999px;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .aura--top {
+      top: -20%;
+      left: -10%;
+      background: rgba(50, 121, 249, .05);
+    }
+
+    .aura--bottom {
+      bottom: -20%;
+      right: -10%;
+      background: rgba(50, 121, 249, .03);
+    }
+
+    .card {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 680px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 32px;
+      padding: 32px;
+      box-shadow: 0 24px 48px -16px rgba(0, 0, 0, .5);
+    }
+
+    .head {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .head__icon {
+      flex: 0 0 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      background: rgba(245, 158, 11, .1);
+      border: 1px solid rgba(245, 158, 11, .2);
+      color: var(--amber);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.15;
+      font-weight: 500;
+      letter-spacing: -.01em;
+      color: var(--text-strong);
+    }
+
+    .head p {
+      margin: 0;
+      font-size: 13.5px;
+      color: #CDD5DF;
+    }
+
+    hr {
+      margin: 24px 0;
+      border: 0;
+      border-top: 1px solid rgba(255, 255, 255, .05);
+    }
+
+    .eyebrow {
+      margin: 0 0 16px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: #6B7684;
+    }
+
+    .block {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 24px;
+      padding: 20px;
+    }
+
+    .block+.block {
+      margin-top: 16px;
+    }
+
+    h2 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-strong);
+    }
+
+    .block p {
+      margin: 0 0 16px;
+      font-size: 13.5px;
+      color: #9AA5B1;
+    }
+
+    .clips {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      max-width: 380px;
+      margin-bottom: 20px;
+    }
+
+    .clip__frame {
+      position: relative;
+      aspect-ratio: 9/16;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: #000;
+    }
+
+    .clip video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Lớp phủ + nút play, bấm mới tải video về. */
+    .clip__play {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(0, 0, 0, .3);
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      transition: background .2s ease;
+    }
+
+    .clip__play:hover {
+      background: rgba(0, 0, 0, .2);
+    }
+
+    .clip__play span {
+      width: 48px;
+      height: 48px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .95);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+      color: #121317;
+      font-size: 17px;
+      padding-left: 4px;
+    }
+
+    .clip__dur {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, .7);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .clip__who {
+      margin: 8px 0 0;
+      font-size: 11px;
+      font-weight: 700;
+      color: #7EA9FF;
+    }
+
+    .clip__what {
+      margin: 0;
+      font-size: 11px;
+      color: #94A0AF;
+      line-height: 1.35;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: background .2s ease;
+    }
+
+    .btn--main {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .btn--main:hover {
+      background: var(--blue-hover);
+    }
+
+    .btn--ghost {
+      background: rgba(255, 255, 255, .05);
+      border: 1px solid var(--line);
+      color: var(--text-strong);
+    }
+
+    .btn--ghost:hover {
+      background: rgba(255, 255, 255, .1);
+    }
+
+    .btn svg {
+      flex: 0 0 auto;
+    }
+
+    footer {
+      position: relative;
+      z-index: 1;
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 1em;
+      text-transform: uppercase;
+      color: #33383F;
+    }
+
+    /* ─── Luật riêng cho điện thoại: LUÔN để cuối bảng kiểu ─────────────── */
+    @media (max-width: 560px) {
+      .card {
+        padding: 24px 20px;
+        border-radius: 26px;
+      }
+
+      h1 {
+        font-size: 21px;
+      }
+
+      .clips {
+        max-width: none;
+      }
+
+      footer {
+        letter-spacing: .55em;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="aura aura--top"></div>
+  <div class="aura aura--bottom"></div>
+
+  <main class="card">
+    <div class="head">
+      <div class="head__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="4" width="4" height="16" rx="1" />
+          <rect x="14" y="4" width="4" height="16" rx="1" />
+        </svg>
+      </div>
+      <div>
+        <h1>Kho Tri Thức 10K Book tạm ngưng</h1>
+        <p>Dự án tạm dừng phát triển. Cám ơn anh chị đã đồng hành cùng 10K Book suốt thời gian qua.</p>
+      </div>
+    </div>
+
+    <hr />
+
+    <p class="eyebrow">Ủng hộ các app khác của team</p>
+
+    <section class="block">
+      <h2>10K Video · app tự cắt video</h2>
+      <p>Bỏ cả loạt video vào, máy tự cắt lời thừa, làm chữ chạy, chèn hình minh hoạ, ra clip sẵn đăng.
+        Hai clip dưới đây do chính app dựng.</p>
+
+      <div class="clips">
+        <div class="clip">
+          <div class="clip__frame">
+            <video preload="none" playsinline poster="https://10kvideo.giauco.vn/anh/poster/van.jpg"
+              src="https://10kvideo.giauco.vn/anh/van-con-so-that.mp4"
+              aria-label="Clip Vân kể con số thật sau khi dùng app làm video"></video>
+            <button class="clip__play" aria-label="Xem clip của Vân">
+              <span>▶</span>
+              <em class="clip__dur" style="font-style:normal">1 phút 56</em>
+            </button>
+          </div>
+          <p class="clip__who">Vân · chủ tiệm</p>
+          <p class="clip__what">Từ cả một đội làm video xuống còn một người</p>
+        </div>
+
+        <div class="clip">
+          <div class="clip__frame">
+            <video preload="none" playsinline poster="https://10kvideo.giauco.vn/anh/poster/tungpu.jpg"
+              src="https://10kvideo.giauco.vn/anh/tungpu-phong-van.mp4"
+              aria-label="Clip phỏng vấn khách hàng về dịch vụ cưới"></video>
+            <button class="clip__play" aria-label="Xem clip của Tùng Pu">
+              <span>▶</span>
+              <em class="clip__dur" style="font-style:normal">3 phút 31</em>
+            </button>
+          </div>
+          <p class="clip__who">Tùng Pu · phỏng vấn khách</p>
+          <p class="clip__what">Clip phỏng vấn khách hàng, do app dựng</p>
+        </div>
+      </div>
+
+      <a class="btn btn--main" href="https://10kvideo.giauco.vn" target="_blank" rel="noopener noreferrer">
+        Xem 10kvideo.giauco.vn
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 17 17 7M7 7h10v10" />
+        </svg>
+      </a>
+    </section>
+
+    <section class="block">
+      <h2>Dịch vụ tăng tương tác</h2>
+      <p>Tăng like, tăng sub người theo dõi, tăng đánh giá cho các kênh TikTok, fanpage và Facebook cá nhân.</p>
+      <a class="btn btn--ghost" href="https://zalo.me/0382789888" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7EA9FF" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5a8.4 8.4 0 0 1 8.5-8.4h.5a8.4 8.4 0 0 1 8 8.4z" />
+        </svg>
+        Liên hệ Zalo 0382789888
+      </a>
+    </section>
+  </main>
+
+  <footer>SuccessCode x 10kBook</footer>
+
+  <script>
+    // Bấm nút play thì gỡ lớp phủ, bật thanh điều khiển rồi chạy clip.
+    document.querySelectorAll('.clip__play').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var video = btn.parentElement.querySelector('video');
+        video.controls = true;
+        btn.remove();
+        video.play();
+      });
+    });
+  </script>
+</body>
+
+</html>

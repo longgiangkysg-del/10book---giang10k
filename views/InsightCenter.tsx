@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Book } from '../types';
 import {
-  Sparkles, Brain, RefreshCw, List, Clock, AlertTriangle, Target, CheckCircle2, ShieldCheck, HelpCircle, FileText, MessageSquareQuote, Zap, Lightbulb, Key, Lock, ExternalLink, Download
+  Sparkles, Brain, RefreshCw, List, Clock, AlertTriangle, Target, CheckCircle2, ShieldCheck, HelpCircle, FileText, MessageSquareQuote, Zap, Lightbulb, Key, Lock, ExternalLink, Download, Trash2
 } from 'lucide-react';
 import { analysisManager, AnalysisState, AgentProgress, AnalysisErrorType } from '../services/analysisManager';
 import StarRating from '../components/StarRating';
@@ -19,6 +19,8 @@ interface InsightCenterProps {
   onAuthorClick?: (author: string) => void;
   persistedLayer?: number;
   onLayerChange?: (layer: number) => void;
+  /** Chỉ truyền cho admin — có hàm này thì thanh nút hiện thêm nút xoá sách. */
+  onDeleteBook?: () => void;
 }
 
 const safeRender = (val: any): string => {
@@ -64,7 +66,7 @@ const AgentBadge: React.FC<{ status: AgentProgress[keyof AgentProgress] }> = ({ 
 const LAYER_IDS = [1, 2, 3];
 const DEFAULT_LAYER = 1;
 
-const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfile, onOpenSettings, isKeyConfigured, freeQuotaRemaining, onAuthorClick, persistedLayer = DEFAULT_LAYER, onLayerChange }) => {
+const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfile, onOpenSettings, isKeyConfigured, freeQuotaRemaining, onAuthorClick, persistedLayer = DEFAULT_LAYER, onLayerChange, onDeleteBook }) => {
   // Subscribe to global analysisManager — survives tab switches
   const [analysisState, setAnalysisState] = useState<AnalysisState>(() => analysisManager.getState());
   const [error, setError] = useState<string | null>(null);
@@ -398,6 +400,16 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
             >
               <RefreshCw size={16} />
             </button>
+            {onDeleteBook && (
+              <button
+                onClick={onDeleteBook}
+                title="Xoá sách khỏi hệ thống"
+                aria-label="Xoá sách khỏi hệ thống"
+                className="p-2.5 rounded-xl border bg-[#212226] border-[#2F3034] text-slate-500 hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/5 transition-all touch-manipulation"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
           </div>
 
           {/* Tab — màn rộng nằm cùng hàng, màn hẹp tự xuống dòng riêng */}

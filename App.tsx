@@ -467,7 +467,13 @@ const App: React.FC = () => {
       await bookService.deleteBook(bookId);
       await loadData();
       await loadActivities();
-      if (selectedBookId === bookId) setSelectedBookId(null);
+      // Xoá cuốn đang mở thì phải rời Work Zone: hash cũ vẫn trỏ vào sách đã mất,
+      // tải lại trang là mở ra một cuốn không còn tồn tại.
+      if (selectedBookId === bookId) {
+        setSelectedBookId(null);
+        if (window.location.hash) window.location.hash = '';
+        handleTabChange('vault');
+      }
       showToast('Đã xóa sách vĩnh viễn khỏi hệ thống.', 'success');
     } catch (err: any) {
       showToast(`Lỗi: ${err.message}`, 'error');
@@ -673,7 +679,7 @@ const App: React.FC = () => {
           ) : activeTab === 'help' ? (
             <HelpView />
           ) : activeTab === 'insight' && selectedBook ? (
-            <InsightCenter book={selectedBook} onUpdate={updateBook} theme="dark" userProfile={userProfile} onOpenSettings={() => setIsSettingsOpen(true)} isKeyConfigured={isKeyConfigured} freeQuotaRemaining={freeQuotaRemaining} onAuthorClick={handleAuthorClick} persistedLayer={persistedLayer} onLayerChange={setPersistedLayer} />
+            <InsightCenter book={selectedBook} onUpdate={updateBook} theme="dark" userProfile={userProfile} onOpenSettings={() => setIsSettingsOpen(true)} isKeyConfigured={isKeyConfigured} freeQuotaRemaining={freeQuotaRemaining} onAuthorClick={handleAuthorClick} persistedLayer={persistedLayer} onLayerChange={setPersistedLayer} onDeleteBook={isAdmin ? () => deleteBookPermanently(selectedBook.id) : undefined} />
           ) : activeTab === 'actions' ? (
             <ActionTracker books={libraryBooks} onUpdateBook={updateBook} />
           ) : (
