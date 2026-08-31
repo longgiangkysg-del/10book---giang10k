@@ -29,29 +29,32 @@ Deno.serve(async (req: Request) => {
             });
         }
 
-        // ── 2. Auth: decode userToken để lấy user ID ─────────────
+        // ── 2. Admin client cho DB queries + xác thực ──────────────
+        const adminSupabase = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        );
+
+        // ── 3. Auth: XÁC THỰC token, không chỉ đọc nội dung ────────
+        // Trước đây chỗ này chỉ atob() phần payload để lấy `sub`. Chữ ký không
+        // được kiểm, mà URL hàm này lẫn anon key đều nằm trong mã nguồn công
+        // khai — nên ai cũng bịa được một token với `sub` bất kỳ và đốt khoá
+        // Gemini dùng chung không giới hạn (Gemini bị gọi TRƯỚC bước ghi nhận
+        // lượt, nên `sub` bịa vẫn tốn tiền). getUser() hỏi Supabase Auth nên
+        // token giả trượt ngay tại đây.
         if (!userToken) {
             return new Response(JSON.stringify({ error: 'Missing userToken' }), {
                 status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
         }
 
-        let userId: string;
-        try {
-            const payload = JSON.parse(atob(userToken.split('.')[1]));
-            userId = payload.sub;
-            if (!userId) throw new Error('No sub in JWT');
-        } catch {
+        const { data: authData, error: authError } = await adminSupabase.auth.getUser(userToken);
+        const userId = authData?.user?.id;
+        if (authError || !userId) {
             return new Response(JSON.stringify({ error: 'Invalid token' }), {
                 status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
         }
-
-        // ── 3. Admin client cho DB queries ─────────────────────────
-        const adminSupabase = createClient(
-            Deno.env.get('SUPABASE_URL')!,
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-        );
 
         // Ưu tiên 1: User key từ Supabase
         const { data: userProfile } = await adminSupabase
