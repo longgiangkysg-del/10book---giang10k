@@ -431,6 +431,11 @@ const App: React.FC = () => {
 
     if (isAnalyzing) {
       await actionService.logAction('ANALYZE_BOOK', updatedBook.title);
+      // Số lượt còn lại trước đây chỉ nạp lúc đăng nhập, nên vừa dùng xong vẫn
+      // hiện con số cũ cho tới lần vào app sau — người dùng tưởng mình còn lượt.
+      if (!apiKeyManager.getKey()) {
+        setFreeQuotaRemaining(await sharedKeyService.getRemainingQuota().catch(() => null));
+      }
     }
 
     await loadData();
@@ -521,7 +526,7 @@ const App: React.FC = () => {
       await bookService.upsertBook(book);
       await loadData();
       await loadActivities();
-      handleTabChange('home');
+      handleTabChange('vault');
       showToast(`Đã thêm "${book.title}" vào tủ sách cá nhân.`, "success");
     } catch (err) {
       showToast("Không thể lưu sách. Vui lòng thử lại sau.", "error");
@@ -561,7 +566,7 @@ const App: React.FC = () => {
       await bookService.upsertBook({ title, author, coverImage, tags });
       await loadData();
       await loadActivities();
-      handleTabChange('home');
+      handleTabChange('vault');
       showToast("Thêm sách mới thành công.", "success");
     } catch (err) {
       showToast("Lỗi khi thêm sách.", "error");
@@ -693,12 +698,22 @@ const App: React.FC = () => {
             { id: 'insight', label: 'Work Zone', icon: LayoutDashboard, disabled: !selectedBookId },
             { id: 'actions', label: 'Lộ Trình', icon: CheckCircle2 },
             { id: 'help', label: 'Hướng dẫn', icon: HelpCircle },
-          ].map((item) => (
+            // Trên điện thoại thanh này là lối đi DUY NHẤT: thanh bên bị ẩn hẳn
+            // (hidden md:flex), nên thiếu mục này thì không ai nhập được API Key,
+            // không xem được còn mấy lượt, cũng không đăng xuất nổi.
+            { id: 'cai-dat', label: 'Cài đặt', icon: Settings },
+          ].map((item) => {
+            const dangMo = item.id === 'cai-dat' ? isSettingsOpen : activeTab === item.id;
+            return (
             <button
               key={item.id}
-              onClick={() => !item.disabled && handleTabChange(item.id)}
+              onClick={() => {
+                if (item.disabled) return;
+                if (item.id === 'cai-dat') navigate({ overlay: 'cai-dat' });
+                else handleTabChange(item.id);
+              }}
               disabled={item.disabled}
-              className={`flex flex-col items-center justify-center w-20 h-14 rounded-xl transition-all touch-manipulation ${activeTab === item.id
+              className={`flex flex-col items-center justify-center flex-1 max-w-[4.5rem] h-14 rounded-xl transition-all touch-manipulation ${dangMo
                 ? 'text-blue-500 bg-blue-500/10'
                 : item.disabled
                   ? 'text-slate-700 opacity-50'
@@ -708,7 +723,7 @@ const App: React.FC = () => {
               <item.icon size={22} className="mb-1" />
               <span className="text-[9px] font-medium tracking-wide">{item.label}</span>
             </button>
-          ))
+          );})
         }
       </div >
 
@@ -844,6 +859,10 @@ const App: React.FC = () => {
                     XÓA KEY HIỆN TẠI
                   </button>
                 )}
+                {/* Lối đăng xuất cho điện thoại: nút trên thanh bên nằm sau `hidden md:flex` */}
+                <button onClick={handleLogout} className="md:hidden w-full bg-transparent hover:bg-white/5 text-slate-500 py-3 rounded-xl text-[9px] font-medium uppercase tracking-widest flex items-center justify-center gap-2 transition-all border border-[#2F3034] touch-target">
+                  <LogOut size={14} /> ĐĂNG XUẤT
+                </button>
               </div>
             </div>
           </div>

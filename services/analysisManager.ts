@@ -65,6 +65,26 @@ function setAgentStatus(agent: keyof AgentProgress, status: AgentProgress[keyof 
     setState({ agentProgress: { ...state.agentProgress, [agent]: status } });
 }
 
+/** Bỏ các tiền tố kỹ thuật khỏi câu hiển thị cho người dùng. */
+function docDuoc(msg: string): string {
+    return msg
+        .replace('API_KEY_ERROR: ', '')
+        .replace('QUOTA_ERROR: ', '')
+        .replace('UNKNOWN_BOOK: ', '')
+        .replace('ANALYSIS_FAILED: ', '');
+}
+
+/**
+ * Hết lượt là hai cảnh khác hẳn nhau, trước đây dùng chung một câu.
+ * 180 trong 209 người dùng KHÔNG có khoá riêng, mà câu cũ lại bảo họ
+ * "liên kết billing trong Google AI Studio" — nơi họ chưa từng đặt chân tới.
+ */
+function thongBaoHetLuot(): string {
+    return apiKeyManager.getKey()
+        ? 'API Key của bạn đã hết quota. Vui lòng liên kết thanh toán (billing) ở trang nhà cung cấp, hoặc chờ quota reset.'
+        : 'Bạn đã dùng hết lượt phân tích miễn phí của tháng này. Lượt mới có vào đầu tháng sau — hoặc vào Cài đặt thêm API Key riêng để dùng ngay.';
+}
+
 // ── Public API ───────────────────────────────────────────────
 export const analysisManager = {
     subscribe(listener: StateListener): () => void {
@@ -235,8 +255,8 @@ export const analysisManager = {
                 const userMessage = errorType === 'api_key'
                     ? 'API Key của bạn không hợp lệ hoặc đã hết hạn. Vui lòng vào Cài đặt để cập nhật Key mới.'
                     : errorType === 'quota'
-                    ? 'API Key đã hết quota miễn phí cho Gemini 2.5 Pro. Vui lòng liên kết thanh toán (billing) trong Google AI Studio hoặc chờ quota reset.'
-                    : firstError.replace('API_KEY_ERROR: ', '').replace('QUOTA_ERROR: ', '').replace('UNKNOWN_BOOK: ', '');
+                    ? thongBaoHetLuot()
+                    : docDuoc(firstError);
 
                 setState({
                     status: 'error',
@@ -267,10 +287,7 @@ export const analysisManager = {
             else if (errorMsg.includes('QUOTA_ERROR') || errorMsg.includes('FREE_QUOTA_EXHAUSTED')) errorType = 'quota';
 
             // Lọc prefix kỹ thuật ra khỏi message hiển thị cho user
-            const userMessage = errorMsg
-                .replace('API_KEY_ERROR: ', '')
-                .replace('QUOTA_ERROR: ', '')
-                .replace('UNKNOWN_BOOK: ', '');
+            const userMessage = errorType === 'quota' ? thongBaoHetLuot() : docDuoc(errorMsg);
 
             setState({
                 status: 'error',

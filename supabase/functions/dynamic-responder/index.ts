@@ -14,6 +14,20 @@ const MONTHLY_QUOTA = 1;
 // chặn với project mới (404 "no longer available to new users").
 const GEMINI_MODEL = 'gemini-3.1-pro-preview';
 
+// Ngưỡng tối thiểu để coi kết quả là dùng được — giữ ĐỒNG BỘ với
+// services/analysis-guard.ts (Deno không import được từ đó).
+const MIN_KNOWLEDGE_PARTS = 3;
+const MIN_IDEAS = 2;
+
+/** Kết quả rỗng, thiếu, hay là lời từ chối trá hình thì không tính là một lượt. */
+function ketQuaDungDuoc(r: any, loai: string): boolean {
+    if (!r || r.error === 'UNKNOWN_BOOK') return false;
+    if ((loai === 'meta' || loai === 'full') && !r.centralThesis?.oneLiner) return false;
+    if ((loai === 'knowledge' || loai === 'full') && (r.knowledgeArchitecture?.length ?? 0) < MIN_KNOWLEDGE_PARTS) return false;
+    if ((loai === 'ideas' || loai === 'full') && (r.ideaSystem?.length ?? 0) < MIN_IDEAS) return false;
+    return true;
+}
+
 Deno.serve(async (req: Request) => {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
@@ -96,13 +110,10 @@ Deno.serve(async (req: Request) => {
                 });
             }
 
-            // Ghi nhận 1 lượt dùng
-            const today = new Date().toISOString().split('T')[0];
-            await adminSupabase.rpc('increment_shared_key_usage', {
-                p_user_id: userId,
-                p_date: today
-            });
-
+            // CỐ Ý chưa trừ lượt ở đây. Người dùng khoá chung mỗi tháng chỉ có
+            // MỘT lượt; trừ trước khi gọi Gemini nghĩa là gõ sai tên sách hay dính
+            // một cú 503 cũng mất trắng cả tháng. Lượt được ghi ở cuối, và chỉ khi
+            // kết quả thật sự dùng được.
             usedSharedKey = true;
             console.log(`📌 User ${userId} dùng shared key (${usedThisMonth + 1}/${MONTHLY_QUOTA} tháng này)`);
         }
@@ -140,18 +151,52 @@ Deno.serve(async (req: Request) => {
         let result: any;
 
         if (agentType === 'full') {
-            // Full analysis: 3 agents tuần tự → merge kết quả (1 quota)
+            // TUẦN TỰ, không Promise.all — nhẹ bộ nhớ hơn vì mỗi lúc chỉ giữ một
+            // câu trả lời cỡ 65k token.
+            //
+            // ⚠️ Nhưng CÁCH NÀY VẪN CHƯA ĐỦ. Đo ngày 31/08/2026: 'meta' một mình
+            // xong sau 33s và trả 200, còn 'full' chết ở giây thứ 150-151 với
+            // WORKER_RESOURCE_LIMIT dù chạy song song hay tuần tự — đó là trần
+            // thời gian của Edge Function gói free, không phải chuyện bộ nhớ.
+            // Ba agent nối nhau không thể vừa trong một lời gọi. Cách chữa thật
+            // là để client gọi ba lượt riêng (mỗi lượt < 150s) và đổi cách đếm
+            // quota, hoặc hạ maxOutputTokens/thinkingBudget cho mỗi agent.
             console.log('🚀 Full analysis: running 3 agents sequentially...');
-            const [metaResult, knowledgeResult, ideaResult] = await Promise.all([
-                callAgent('meta').catch(e => { console.error('Meta failed:', e); return {}; }),
-                callAgent('knowledge').catch(e => { console.error('Knowledge failed:', e); return {}; }),
-                callAgent('ideas').catch(e => { console.error('Ideas failed:', e); return {}; }),
-            ]);
-            result = { ...metaResult, ...knowledgeResult, ...ideaResult };
+            result = {};
+            for (const loai of ['meta', 'knowledge', 'ideas']) {
+                try {
+                    Object.assign(result, await callAgent(loai));
+                } catch (e) {
+                    // Không dừng cả mẻ vì một agent: cửa kiểm ở cuối sẽ quyết định
+                    // kết quả có đủ dùng hay không, và lượt chỉ bị trừ khi đủ.
+                    console.error(`Agent ${loai} failed:`, e);
+                }
+            }
             console.log('✅ Full analysis complete');
         } else {
             // Single agent call
             result = await callAgent(agentType);
+        }
+
+        // Ba agent đều bọc .catch(() => ({})) nên hỏng vẫn ra một object rỗng và
+        // đi tiếp như thường. Chặn ở đây, và KHÔNG trừ lượt: người dùng thử lại được.
+        if (!ketQuaDungDuoc(result, agentType)) {
+            console.error('Kết quả không dùng được, không trừ lượt:', JSON.stringify(result).slice(0, 300));
+            return new Response(JSON.stringify({ error: 'ANALYSIS_FAILED' }), {
+                status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        // Tới đây mới ghi nhận lượt: có kết quả trong tay rồi mới tính tiền.
+        if (usedSharedKey) {
+            const today = new Date().toISOString().split('T')[0];
+            const { error: quotaError } = await adminSupabase.rpc('increment_shared_key_usage', {
+                p_user_id: userId,
+                p_date: today
+            });
+            // Ghi hụt thì chỉ log: đã tốn tiền gọi Gemini rồi, ném lỗi lúc này là
+            // vứt luôn kết quả người dùng vừa chờ mấy phút.
+            if (quotaError) console.error('Không ghi được lượt dùng:', quotaError.message);
         }
 
         return new Response(JSON.stringify({ success: true, data: result, usedSharedKey }), {

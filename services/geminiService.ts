@@ -47,6 +47,16 @@ const callGeminiProxy = async (
   if (!res.ok) {
     console.error('Proxy error:', res.status, json);
     if (json.error === 'FREE_QUOTA_EXHAUSTED') throw new Error('FREE_QUOTA_EXHAUSTED');
+    // Máy chủ đã chặn kết quả rỗng và KHÔNG trừ lượt — phải nói rõ để người dùng
+    // dám bấm lại, thay vì tưởng mình vừa đốt mất lượt duy nhất của tháng.
+    if (json.error === 'ANALYSIS_FAILED') {
+      throw new Error('ANALYSIS_FAILED: AI không trả về kết quả dùng được cho cuốn này. Lượt miễn phí của bạn CHƯA bị trừ — kiểm lại tên sách và tên tác giả rồi thử lại.');
+    }
+    // Supabase tự cắt hàm ở giây thứ 150 và trả mã của riêng nó, không phải JSON
+    // của mình. Không dịch ra tiếng người thì người dùng chỉ thấy "Lỗi từ server".
+    if (json.code === 'WORKER_RESOURCE_LIMIT' || res.status === 546) {
+      throw new Error('ANALYSIS_FAILED: Lượt phân tích chạy quá lâu nên máy chủ đã cắt giữa chừng. Lượt miễn phí của bạn CHƯA bị trừ. Hãy thử lại, hoặc thêm API Key riêng trong Cài đặt để chạy nhanh hơn.');
+    }
     throw new Error(json.error || 'Lỗi từ server');
   }
 
