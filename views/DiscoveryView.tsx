@@ -22,6 +22,12 @@ interface DiscoveryViewProps {
   onBatchAnalyze?: (bookIds: string[]) => void;
   isAdmin?: boolean;
   initialSearch?: string;
+  /** Hộp thoại đang mở, do link quyết định (services/routing.ts). */
+  overlay?: 'them-sach' | 'tim-ai' | 'sua' | 'cai-dat' | null;
+  /** Sách mà hộp thoại "sửa" đang nhắm tới. */
+  overlayBookId?: string | null;
+  onOverlay?: (overlay: 'them-sach' | 'tim-ai' | 'sua', bookId?: string) => void;
+  onCloseOverlay?: () => void;
 }
 
 const removeAccents = (str: any) => {
@@ -31,18 +37,15 @@ const removeAccents = (str: any) => {
 
 const BOOKS_PER_PAGE = 24;
 
-const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onUpdateBook, allBooks, userBooks = [], onAddBook, onUnsaveBook, onDeleteBook, onBatchAnalyze, isAdmin, initialSearch }) => {
+const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onUpdateBook, allBooks, userBooks = [], onAddBook, onUnsaveBook, onDeleteBook, onBatchAnalyze, isAdmin, initialSearch, overlay = null, overlayBookId = null, onOverlay, onCloseOverlay }) => {
   const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState(initialSearch || '');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'personal' | 'unsaved'>('all');
   const [sortMode, setSortMode] = useState<'default' | 'saves' | 'analyzed' | 'unanalyzed'>('saves');
   const [currentPage, setCurrentPage] = useState(1);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
 
   // ═══ AI Search State ═══
-  const [showAiSearch, setShowAiSearch] = useState(false);
   const [aiSearchGoal, setAiSearchGoal] = useState('');
   const [aiSearching, setAiSearching] = useState(false);
   const [aiResults, setAiResults] = useState<{ title: string; author: string; reason: string }[]>([]);
@@ -54,6 +57,11 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentTitle: '' });
   const [editData, setEditData] = useState<any>(null);
+  // Ba hộp thoại đều suy từ link nên tải lại trang hay bấm Back đều ra đúng chỗ.
+  const showEditModal = overlay === 'sua';
+  const showAddModal = overlay === 'them-sach';
+  const showAiSearch = overlay === 'tim-ai';
+  const dongHopThoai = () => onCloseOverlay?.();
   const [formData, setFormData] = useState({
     title: '', author: '', coverImage: '', tags: [] as string[]
   });
@@ -96,6 +104,15 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
   useEffect(() => {
     bookService.fetchAvailableTags().then(setAvailableTags);
   }, []);
+
+  // Mở thẳng link #/kho-sach/sua/<id> (dán link, tải lại trang, bấm Forward):
+  // không có cú bấm nào nạp editData nên phải tự tìm sách theo id trong link.
+  useEffect(() => {
+    if (overlay !== 'sua' || !overlayBookId || editData?.id === overlayBookId) return;
+    const sach = allBooks.find(b => b.id === overlayBookId);
+    if (sach) setEditData({ ...sach });
+    else onCloseOverlay?.();   // sách đã bị xoá — đừng treo hộp thoại rỗng
+  }, [overlay, overlayBookId, allBooks, editData?.id, onCloseOverlay]);
 
   // Update searchTerm when initialSearch prop changes (e.g., clicking author link)
   useEffect(() => {
@@ -165,13 +182,13 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
     e.preventDefault();
     e.stopPropagation();
     setEditData({ ...book });
-    setShowEditModal(true);
+    onOverlay?.('sua', book.id);
   };
 
   const handleUpdate = () => {
     if (!editData) return;
     onUpdateBook(editData);
-    setShowEditModal(false);
+    dongHopThoai();
     setEditData(null);
   };
 
@@ -199,7 +216,7 @@ const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onSelectBook, onSave, onU
   const handleAddBook = () => {
     if (formData.title.trim()) {
       onAddBook(formData.title, formData.author, formData.coverImage, formData.tags);
-      setShowAddModal(false);
+      dongHopThoai();
       setFormData({ title: '', author: '', coverImage: '', tags: [] });
     }
   };
@@ -344,14 +361,14 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
           </div>
 
           <button
-            onClick={() => setShowAiSearch(true)}
+            onClick={() => onOverlay?.('tim-ai')}
             className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-4 py-2.5 rounded-xl text-[9px] md:text-[10px] font-medium uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shrink-0"
           >
             <Sparkles size={14} /> <span className="hidden sm:inline">AI TÌM SÁCH</span>
           </button>
 
           <button
-            onClick={() => { setFormData({ title: '', author: '', coverImage: '', tags: [] }); setShowAddModal(true); }}
+            onClick={() => { setFormData({ title: '', author: '', coverImage: '', tags: [] }); onOverlay?.('them-sach'); }}
             className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2.5 rounded-xl text-[9px] md:text-[10px] font-medium uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shrink-0"
           >
             <Plus size={14} /> <span className="hidden sm:inline">THÊM SÁCH</span>
@@ -535,7 +552,7 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
           <div className="bg-[#212226] border border-[#2F3034] w-full max-w-2xl rounded-[2rem] md:rounded-[3rem] shadow-2xl p-6 md:p-10 space-y-6 md:space-y-8 animate-in zoom-in-95 duration-300 overflow-y-auto max-h-[90vh]">
             <div className="flex justify-between items-center border-b border-[#2F3034] pb-4 md:pb-6">
               <h2 className="text-xl md:text-2xl font-medium text-white uppercase tracking-tighter italic">Cập nhật Kho Hệ Thống</h2>
-              <button onClick={() => setShowEditModal(false)} className="text-slate-500 hover:text-white p-2 bg-white/5 rounded-xl">
+              <button onClick={dongHopThoai} className="text-slate-500 hover:text-white p-2 bg-white/5 rounded-xl">
                 <X size={20} />
               </button>
             </div>
@@ -603,7 +620,7 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
           <div className="bg-[#212226] border border-[#2F3034] w-full max-w-2xl rounded-[2rem] md:rounded-[3rem] shadow-2xl p-6 md:p-10 space-y-6 md:space-y-8 animate-in zoom-in-95 duration-300 overflow-y-auto max-h-[90vh] scrollbar-none">
             <div className="flex justify-between items-center border-b border-[#2F3034] pb-4 md:pb-6">
               <h2 className="text-xl md:text-2xl font-medium text-white tracking-tight">Thêm sách mới</h2>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-500 hover:text-white p-2 bg-white/5 rounded-xl"><X size={24} /></button>
+              <button onClick={dongHopThoai} className="text-slate-500 hover:text-white p-2 bg-white/5 rounded-xl"><X size={24} /></button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
               <div onClick={() => addFileInputRef.current?.click()} className="aspect-[2/3] bg-[#121317] border-2 border-dashed border-[#2F3034] rounded-2xl flex items-center justify-center cursor-pointer overflow-hidden group hover:border-amber-600/50 transition-all relative max-w-[200px] md:max-w-none mx-auto w-full">
@@ -646,7 +663,7 @@ CHỈ trả về JSON array, KHÔNG thêm text nào khác.` }] },
                 <div className="p-2 bg-purple-600/10 rounded-xl border border-purple-500/20"><Sparkles size={20} className="text-purple-400" /></div>
                 <h2 className="text-lg font-medium text-white uppercase tracking-tighter">AI Tìm Sách</h2>
               </div>
-              <button onClick={() => { setShowAiSearch(false); setAiResults([]); setAiSearchGoal(''); }} className="text-slate-600 hover:text-white p-2"><X size={20} /></button>
+              <button onClick={() => { dongHopThoai(); setAiResults([]); setAiSearchGoal(''); }} className="text-slate-600 hover:text-white p-2"><X size={20} /></button>
             </div>
 
             <div className="space-y-4">

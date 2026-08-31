@@ -18,6 +18,7 @@ import HelpView from './views/HelpView';
 import PublicBookView from './views/PublicBookView';
 import { useToast } from './components/Toast';
 import { DEV_PREVIEW, DEV_PREVIEW_SESSION } from './services/dev-preview';
+import { parseHash, buildHash, DEFAULT_LAYER, type Route, type Overlay } from './services/routing';
 
 interface BookWithActivity extends Book {
   lastActivity: number;
@@ -56,64 +57,65 @@ const App: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
-  // Persisted States (localStorage - survives app restart)
-  const [activeTab, setActiveTab] = usePersistedState<string>('app_activeTab', 'vault');
-  const [selectedBookId, setSelectedBookId] = usePersistedState<string | null>('app_selectedBookId', null);
   const [isSidebarOpen, setIsSidebarOpen] = usePersistedState<boolean>('app_sidebarOpen', true);
-  // Persist current layer so user returns to same reading position
-  // Mặc định phải là một lớp có thật (1 = Overview). Số 0 không ứng với lớp nào,
-  // nên máy nào chưa có giá trị lưu — máy mới, hoặc sau khi đổi tên miền vì
-  // localStorage gắn theo domain — sẽ mở sách ra thấy trắng trơn.
-  const [persistedLayer, setPersistedLayer] = usePersistedState<number>('app_activeLayer', 1);
 
-  // Redirect old 'home' tab to 'vault' (merged view)
+  // ── Định tuyến ────────────────────────────────────────────
+  // Link là nguồn chân lý cho "đang ở màn nào": tab, sách đang mở, lớp đang đọc
+  // và hộp thoại đều nằm trong hash (services/routing.ts). localStorage chỉ còn
+  // dùng để mở lại đúng chỗ khi vào app bằng link trống.
+  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
+
+  const navigate = useCallback((thayDoi: Partial<Route>, replace = false) => {
+    setRoute(truoc => {
+      const sau: Route = { ...truoc, ...thayDoi };
+      const hash = buildHash(sau);
+      if (hash !== window.location.hash) {
+        // pushState/replaceState KHÔNG bắn hashchange nên state và link đi cùng
+        // một nhịp — gán location.hash sẽ tạo lượt cập nhật thứ hai.
+        const fn = replace ? 'replaceState' : 'pushState';
+        window.history[fn]({ overlay: !!sau.overlay }, '', hash);
+      }
+      localStorage.setItem('app_route', hash);
+      return sau;
+    });
+  }, []);
+
+  /** Đóng hộp thoại: lùi lịch sử nếu chính app đã đẩy nó vào, không thì ghi đè link. */
+  const closeOverlay = useCallback(() => {
+    if (window.history.state?.overlay) window.history.back();
+    else navigate({ overlay: null, overlayBookId: null }, true);
+  }, [navigate]);
+
+  // Vào app bằng link trống thì mở lại chỗ cũ đã lưu.
   useEffect(() => {
-    if (activeTab === 'home') setActiveTab('vault');
-  }, [activeTab, setActiveTab]);
+    if (!window.location.hash) {
+      const luu = localStorage.getItem('app_route');
+      const r = parseHash(luu || '');
+      window.history.replaceState({ overlay: !!r.overlay }, '', buildHash(r));
+      setRoute(r);
+    }
+    const doiHuong = () => setRoute(parseHash(window.location.hash));
+    // popstate: nút Back/Forward · hashchange: người dùng tự sửa link trên thanh địa chỉ
+    window.addEventListener('popstate', doiHuong);
+    window.addEventListener('hashchange', doiHuong);
+    return () => {
+      window.removeEventListener('popstate', doiHuong);
+      window.removeEventListener('hashchange', doiHuong);
+    };
+  }, []);
 
-  // ── Hash URL Routing ──────────────────────────────────────
-  // Parse hash like #/book/BOOK_ID and open that book
-  const parseHashBookId = (): string | null => {
-    const hash = window.location.hash; // e.g. "#/book/abc123"
-    const match = hash.match(/^#\/book\/(.+)$/);
-    return match ? match[1] : null;
-  };
+  const activeTab = route.bookId ? 'insight' : route.tab;
+  const selectedBookId = route.bookId;
+  const persistedLayer = route.layer;
+  const isSettingsOpen = route.overlay === 'cai-dat';
+  const setPersistedLayer = useCallback((layer: number) => navigate({ layer }, true), [navigate]);
 
-  // Open book by ID (used by hash routing + normal selection)
   const handleOpenBook = (bookId: string) => {
-    setSelectedBookId(bookId);
-    setActiveTab('insight');
-    window.location.hash = `/book/${bookId}`;
+    navigate({ bookId, layer: DEFAULT_LAYER, overlay: null, overlayBookId: null });
     if (window.innerWidth < 768) setIsSidebarOpen(false);
     if ('vibrate' in navigator) navigator.vibrate(10);
   };
 
-  // On mount: if URL has a book hash, open it
-  useEffect(() => {
-    const hashBookId = parseHashBookId();
-    if (hashBookId) {
-      setSelectedBookId(hashBookId);
-      setActiveTab('insight');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Listen for browser back/forward changing hash
-  useEffect(() => {
-    const onHashChange = () => {
-      const hashBookId = parseHashBookId();
-      if (hashBookId) {
-        setSelectedBookId(hashBookId);
-        setActiveTab('insight');
-      } else {
-        setActiveTab('vault');
-      }
-    };
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, [setSelectedBookId, setActiveTab]);
-
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   // Track global analysis running state for sidebar indicator
   const [globalAnalysisRunning, setGlobalAnalysisRunning] = useState(false);
 
@@ -178,7 +180,8 @@ const App: React.FC = () => {
   }, [setIsSidebarOpen]);
 
   const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
+    // Rời Work Zone thì bỏ luôn sách đang mở khỏi link, kẻo tab mới vẫn mang id sách.
+    navigate({ tab: tab as Route['tab'], bookId: null, overlay: null, overlayBookId: null });
     if (tab !== 'vault') {
       setAuthorFilter('');
     }
@@ -387,7 +390,7 @@ const App: React.FC = () => {
     sessionStorage.clear();
   };
 
-  const handleOpenAiKey = () => setIsSettingsOpen(true);
+  const handleOpenAiKey = () => navigate({ overlay: 'cai-dat' });
 
   const saveManualKey = async () => {
     const cleanKey = manualApiKey.trim();
@@ -421,7 +424,7 @@ const App: React.FC = () => {
       }
 
       setIsKeyConfigured(true);
-      setIsSettingsOpen(false);
+      closeOverlay();
       setFreeQuotaRemaining(null);
 
       if (testReply) {
@@ -454,7 +457,7 @@ const App: React.FC = () => {
       }
       await userService.saveProviderConfig(apiKeyManager.exportConfig());
       if (selectedProvider === 'gemini') await userService.saveApiKey('');
-      setIsSettingsOpen(false);
+      closeOverlay();
       showToast(`Đã gỡ bỏ API Key ${providerName}.`, "info");
     }
   };
@@ -480,11 +483,7 @@ const App: React.FC = () => {
       await loadActivities();
       // Xoá cuốn đang mở thì phải rời Work Zone: hash cũ vẫn trỏ vào sách đã mất,
       // tải lại trang là mở ra một cuốn không còn tồn tại.
-      if (selectedBookId === bookId) {
-        setSelectedBookId(null);
-        if (window.location.hash) window.location.hash = '';
-        handleTabChange('vault');
-      }
+      if (selectedBookId === bookId) handleTabChange('vault');
       showToast('Đã xóa sách vĩnh viễn khỏi hệ thống.', 'success');
     } catch (err: any) {
       showToast(`Lỗi: ${err.message}`, 'error');
@@ -496,7 +495,7 @@ const App: React.FC = () => {
       await bookService.removeUserFromBook(bookId);
       await loadData();
       await loadActivities();
-      if (selectedBookId === bookId) setSelectedBookId(null);
+      if (selectedBookId === bookId) handleTabChange('vault');
       showToast("Đã gỡ sách khỏi tủ cá nhân.", "info");
     } catch (err) {
       showToast("Lỗi khi gỡ sách.", "error");
@@ -525,9 +524,9 @@ const App: React.FC = () => {
   };
 
   if (!session && !isLoading) {
-    const publicBookId = parseHashBookId();
-    if (publicBookId) {
-      return <PublicBookView bookId={publicBookId} onLogin={() => authService.signInWithGoogle()} />;
+    // Link chia sẻ sách: khách chưa đăng nhập vẫn đọc được cuốn đó.
+    if (route.bookId) {
+      return <PublicBookView bookId={route.bookId} onLogin={() => authService.signInWithGoogle()} />;
     }
     return <AuthView />;
   }
@@ -592,10 +591,7 @@ const App: React.FC = () => {
                 <div
                   key={i}
                   onClick={() => {
-                    if (matchedBook) {
-                      setSelectedBookId(matchedBook.id);
-                      handleTabChange('insight');
-                    }
+                    if (matchedBook) handleOpenBook(matchedBook.id);
                   }}
                   className={`flex flex-col p-3 bg-white/5 rounded-xl border border-white/5 group hover:bg-white/[0.08] transition-all ${matchedBook ? 'cursor-pointer' : ''}`}
                 >
@@ -690,11 +686,11 @@ const App: React.FC = () => {
           ) : activeTab === 'help' ? (
             <HelpView />
           ) : activeTab === 'insight' && selectedBook ? (
-            <InsightCenter book={selectedBook} onUpdate={updateBook} theme="dark" userProfile={userProfile} onOpenSettings={() => setIsSettingsOpen(true)} isKeyConfigured={isKeyConfigured} freeQuotaRemaining={freeQuotaRemaining} onAuthorClick={handleAuthorClick} persistedLayer={persistedLayer} onLayerChange={setPersistedLayer} onDeleteBook={isAdmin ? () => deleteBookPermanently(selectedBook.id) : undefined} />
+            <InsightCenter book={selectedBook} onUpdate={updateBook} theme="dark" userProfile={userProfile} onOpenSettings={() => navigate({ overlay: 'cai-dat' })} isKeyConfigured={isKeyConfigured} freeQuotaRemaining={freeQuotaRemaining} onAuthorClick={handleAuthorClick} persistedLayer={persistedLayer} onLayerChange={setPersistedLayer} onDeleteBook={isAdmin ? () => deleteBookPermanently(selectedBook.id) : undefined} />
           ) : activeTab === 'actions' ? (
             <ActionTracker books={libraryBooks} onUpdateBook={updateBook} />
           ) : (
-            <DiscoveryView onSelectBook={handleOpenBook} onSave={saveToLibrary} onUpdateBook={updateBook} allBooks={discoveryBooks} userBooks={libraryBooks} onAddBook={addBook} onUnsaveBook={unsaveFromLibrary} onDeleteBook={isAdmin ? deleteBookPermanently : undefined} isAdmin={isAdmin} initialSearch={authorFilter} />
+            <DiscoveryView onSelectBook={handleOpenBook} onSave={saveToLibrary} onUpdateBook={updateBook} allBooks={discoveryBooks} userBooks={libraryBooks} onAddBook={addBook} onUnsaveBook={unsaveFromLibrary} onDeleteBook={isAdmin ? deleteBookPermanently : undefined} isAdmin={isAdmin} initialSearch={authorFilter} overlay={route.overlay} overlayBookId={route.overlayBookId} onOverlay={(o: Overlay, bookId?: string) => navigate({ overlay: o, overlayBookId: bookId ?? null })} onCloseOverlay={closeOverlay} />
           )}
         </div>
       </main >
@@ -711,7 +707,7 @@ const App: React.FC = () => {
                   </div>
                   <h2 className="text-lg md:text-xl font-medium text-white uppercase tracking-tighter">AI Cấu hình</h2>
                 </div>
-                <button onClick={() => !isValidating && setIsSettingsOpen(false)} className="text-slate-600 hover:text-white transition-colors touch-target" disabled={isValidating}>
+                <button onClick={() => !isValidating && closeOverlay()} className="text-slate-600 hover:text-white transition-colors touch-target" disabled={isValidating}>
                   <X size={20} />
                 </button>
               </div>
