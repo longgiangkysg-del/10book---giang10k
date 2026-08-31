@@ -15,7 +15,8 @@ interface InsightCenterProps {
   userProfile?: any;
   onOpenSettings: () => void;
   isKeyConfigured: boolean;
-  freeQuotaRemaining?: number | null;
+  /** Admin dùng được khoá AI chung; người khác phải có khoá riêng. */
+  isAdmin?: boolean;
   onAuthorClick?: (author: string) => void;
   persistedLayer?: number;
   onLayerChange?: (layer: number) => void;
@@ -66,7 +67,7 @@ const AgentBadge: React.FC<{ status: AgentProgress[keyof AgentProgress] }> = ({ 
 const LAYER_IDS = [1, 2, 3];
 const DEFAULT_LAYER = 1;
 
-const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfile, onOpenSettings, isKeyConfigured, freeQuotaRemaining, onAuthorClick, persistedLayer = DEFAULT_LAYER, onLayerChange, onDeleteBook }) => {
+const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfile, onOpenSettings, isKeyConfigured, isAdmin, onAuthorClick, persistedLayer = DEFAULT_LAYER, onLayerChange, onDeleteBook }) => {
   // Subscribe to global analysisManager — survives tab switches
   const [analysisState, setAnalysisState] = useState<AnalysisState>(() => analysisManager.getState());
   const [error, setError] = useState<string | null>(null);
@@ -180,7 +181,8 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
     { id: 3, label: 'Ideas', icon: Lightbulb },
   ];
 
-  const hasAccess = isKeyConfigured || (freeQuotaRemaining != null && freeQuotaRemaining > 0);
+  // Chế độ miễn phí đã bỏ (31/08/2026): phải có khoá AI riêng, hoặc là admin.
+  const hasAccess = isKeyConfigured || !!isAdmin;
 
   const runAdvancedAnalysis = async (isRetry = false) => {
     if (!hasAccess) {
@@ -248,7 +250,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
             </div>
             <h2 className="text-xl md:text-2xl font-medium text-white mb-3 uppercase tracking-tighter">Tính năng đã bị khóa</h2>
             <p className="text-slate-500 text-xs md:text-sm mb-8 leading-relaxed max-w-sm mx-auto font-medium">
-              Bạn cần cấu hình Gemini API Key cá nhân để bắt đầu phân tích tri thức chuyên sâu.
+              Bạn cần thêm API Key AI của riêng mình để phân tích sách. Vào Cài đặt, chọn nhà cung cấp rồi dán key vào — sách đã phân tích sẵn thì vẫn đọc được bình thường.
             </p>
             <button onClick={onOpenSettings} className="w-full py-4 md:py-5 rounded-xl md:rounded-2xl font-medium text-[10px] md:text-[11px] uppercase tracking-widest transition-all bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-3 shadow-xl">
               <Key size={16} /> THIẾT LẬP API KEY
@@ -276,7 +278,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
                 {errorType === 'api_key' ? <Key size={16} className="text-amber-400 shrink-0 mt-0.5" /> : errorType === 'quota' ? <Lock size={16} className="text-blue-400 shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="text-rose-400 shrink-0 mt-0.5" />}
                 <div className="flex-1">
                   <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${errorType === 'api_key' ? 'text-amber-400' : errorType === 'quota' ? 'text-blue-400' : 'text-rose-400'}`}>
-                    {errorType === 'api_key' ? 'API Key lỗi' : errorType === 'quota' ? 'Hết lượt miễn phí' : 'Đã xảy ra lỗi'}
+                    {errorType === 'api_key' ? 'API Key lỗi' : errorType === 'quota' ? 'Hết hạn mức API Key' : 'Đã xảy ra lỗi'}
                   </p>
                   <p className={`text-[11px] md:text-xs ${errorType === 'api_key' ? 'text-amber-300' : errorType === 'quota' ? 'text-blue-300' : 'text-rose-300'}`}>{error}</p>
                   {(errorType === 'api_key' || errorType === 'quota') && (
@@ -289,7 +291,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
             </div>
           )}
           <button onClick={() => runAdvancedAnalysis(false)} className="w-full py-4 md:py-5 rounded-xl md:rounded-2xl font-medium text-[10px] md:text-[11px] uppercase tracking-widest bg-blue-600 hover:bg-blue-500 text-white shadow-xl transition-colors">
-            {error ? 'THỬ LẠI LẦN NỮA' : (!isKeyConfigured && freeQuotaRemaining != null && freeQuotaRemaining > 0) ? `DÙNG ${freeQuotaRemaining} LƯỢT MIỄN PHÍ` : 'BẮT ĐẦU PHÂN TÍCH TRI THỨC'}
+            {error ? 'THỬ LẠI LẦN NỮA' : 'BẮT ĐẦU PHÂN TÍCH TRI THỨC'}
           </button>
         </div>
       </div>
@@ -317,7 +319,7 @@ const InsightCenter: React.FC<InsightCenterProps> = ({ book, onUpdate, userProfi
               </div>
             </div>
             <h2 className="text-lg md:text-xl font-medium text-white text-center mb-3 uppercase tracking-tighter">
-              {errorType === 'api_key' ? 'API Key không hợp lệ' : errorType === 'quota' ? 'Hết lượt miễn phí' : 'Lỗi phân tích'}
+              {errorType === 'api_key' ? 'API Key không hợp lệ' : errorType === 'quota' ? 'Hết hạn mức API Key' : 'Lỗi phân tích'}
             </h2>
             <p className="text-slate-400 text-xs md:text-sm text-center mb-8 leading-relaxed font-medium">
               {error}

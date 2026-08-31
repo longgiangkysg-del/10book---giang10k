@@ -4,7 +4,7 @@ import {
   Menu, X, Library, LayoutDashboard, CheckCircle2, History, Compass, LogOut, Settings, Key, Save, ExternalLink, ShieldCheck, ShieldAlert, Activity, User, Loader2, Download, HelpCircle
 } from 'lucide-react';
 import { Book, Priority } from './types';
-import { bookService, supabase, authService, userService, actionService, sharedKeyService } from './services/supabaseClient';
+import { bookService, supabase, authService, userService, actionService } from './services/supabaseClient';
 import { geminiService } from './services/geminiService';
 import { apiKeyManager } from './services/apiKeyManager';
 import { PROVIDERS, PROVIDER_LIST } from './services/aiProviders';
@@ -159,8 +159,6 @@ const App: React.FC = () => {
   // Multi-provider state
   const [selectedProvider, setSelectedProvider] = useState('gemini');
   const [authorFilter, setAuthorFilter] = useState<string>('');
-  // Quota miễn phí: số lượt phân tích miễn phí còn lại hôm nay
-  const [freeQuotaRemaining, setFreeQuotaRemaining] = useState<number | null>(null);
 
   // Handle Author Click
   const handleAuthorClick = (author: string) => {
@@ -366,19 +364,15 @@ const App: React.FC = () => {
       // Sáu việc này không việc nào cần kết quả của việc nào, nhưng trước đây xếp
       // hàng nối đuôi: hồ sơ → cấu hình khoá → quota → kho sách → hoạt động.
       // Chạy cùng lúc thì tổng thời gian bằng việc lâu nhất chứ không phải tổng.
-      const [profile, providerConfig, remaining, adminStatus] = await Promise.all([
+      const [profile, providerConfig, adminStatus] = await Promise.all([
         nuotLoi(userService.ensureProfile(), null, 'nạp hồ sơ'),
         nuotLoi(userService.loadProviderConfig(), null, 'nạp cấu hình khoá AI'),
-        // Đếm hụt thì để null chứ đừng để 0: null nghĩa là "không rõ" và app không
-        // mở đường miễn phí, an toàn hơn là đoán bừa rồi đốt khoá dùng chung.
-        nuotLoi<number | null>(sharedKeyService.getRemainingQuota(), null, 'đếm lượt miễn phí'),
         nuotLoi(authService.isAdmin(), false, 'kiểm quyền admin'),
         nuotLoi(loadData(), undefined, 'nạp kho sách'),
         nuotLoi(loadActivities(), undefined, 'nạp hoạt động gần đây'),
       ]);
 
       setUserProfile(profile);
-      setFreeQuotaRemaining(remaining);
       setIsAdmin(adminStatus);
 
       if (providerConfig) {
@@ -431,11 +425,6 @@ const App: React.FC = () => {
 
     if (isAnalyzing) {
       await actionService.logAction('ANALYZE_BOOK', updatedBook.title);
-      // Số lượt còn lại trước đây chỉ nạp lúc đăng nhập, nên vừa dùng xong vẫn
-      // hiện con số cũ cho tới lần vào app sau — người dùng tưởng mình còn lượt.
-      if (!apiKeyManager.getKey()) {
-        setFreeQuotaRemaining(await sharedKeyService.getRemainingQuota().catch(() => null));
-      }
     }
 
     await loadData();
@@ -484,7 +473,6 @@ const App: React.FC = () => {
 
       setIsKeyConfigured(true);
       closeOverlay();
-      setFreeQuotaRemaining(null);
 
       if (testReply) {
         const short = testReply.length > 80 ? testReply.slice(0, 80) + '...' : testReply;
@@ -673,13 +661,13 @@ const App: React.FC = () => {
           {/* Settings / API Key */}
           <div
             onClick={handleOpenAiKey}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer group mb-2 transition-all ${isKeyConfigured ? 'bg-green-500/5 border-green-500/20' : (freeQuotaRemaining != null && freeQuotaRemaining > 0) ? 'bg-blue-500/5 border-blue-500/20' : 'bg-rose-500/5 border-rose-500/20'}`}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer group mb-2 transition-all ${isKeyConfigured ? 'bg-green-500/5 border-green-500/20' : isAdmin ? 'bg-blue-500/5 border-blue-500/20' : 'bg-rose-500/5 border-rose-500/20'}`}
           >
-            <Settings size={18} className={isKeyConfigured ? 'text-green-500' : (freeQuotaRemaining != null && freeQuotaRemaining > 0) ? 'text-blue-500' : 'text-rose-500'} />
+            <Settings size={18} className={isKeyConfigured ? 'text-green-500' : isAdmin ? 'text-blue-500' : 'text-rose-500'} />
             {isSidebarOpen && (
               <div className="flex-1">
-                <p className={`text-[11px] font-bold uppercase tracking-wide leading-none ${isKeyConfigured ? 'text-green-500' : (freeQuotaRemaining != null && freeQuotaRemaining > 0) ? 'text-blue-500' : 'text-rose-500'}`}>
-                  AI: {isKeyConfigured ? 'Kích hoạt' : (freeQuotaRemaining != null && freeQuotaRemaining > 0) ? `${freeQuotaRemaining} lượt miễn phí` : 'Bị khóa'}
+                <p className={`text-[11px] font-bold uppercase tracking-wide leading-none ${isKeyConfigured ? 'text-green-500' : isAdmin ? 'text-blue-500' : 'text-rose-500'}`}>
+                  AI: {isKeyConfigured ? 'Kích hoạt' : isAdmin ? 'Khoá chung' : 'Chưa có key'}
                 </p>
               </div>
             )}
@@ -755,7 +743,7 @@ const App: React.FC = () => {
           ) : activeTab === 'help' ? (
             <HelpView />
           ) : activeTab === 'insight' && selectedBook ? (
-            <InsightCenter book={selectedBook} onUpdate={updateBook} theme="dark" userProfile={userProfile} onOpenSettings={() => navigate({ overlay: 'cai-dat' })} isKeyConfigured={isKeyConfigured} freeQuotaRemaining={freeQuotaRemaining} onAuthorClick={handleAuthorClick} persistedLayer={persistedLayer} onLayerChange={setPersistedLayer} onDeleteBook={isAdmin ? () => deleteBookPermanently(selectedBook.id) : undefined} />
+            <InsightCenter book={selectedBook} onUpdate={updateBook} theme="dark" userProfile={userProfile} onOpenSettings={() => navigate({ overlay: 'cai-dat' })} isKeyConfigured={isKeyConfigured} isAdmin={isAdmin} onAuthorClick={handleAuthorClick} persistedLayer={persistedLayer} onLayerChange={setPersistedLayer} onDeleteBook={isAdmin ? () => deleteBookPermanently(selectedBook.id) : undefined} />
           ) : activeTab === 'actions' ? (
             <ActionTracker books={libraryBooks} onUpdateBook={updateBook} />
           ) : (
@@ -787,17 +775,12 @@ const App: React.FC = () => {
                     <p className="text-slate-400 text-[9px] md:text-[10px] leading-relaxed font-medium">
                       {isKeyConfigured
                         ? `Đang dùng ${PROVIDERS[apiKeyManager.getActiveProvider()]?.name || 'AI'}. Chọn provider bên dưới để thêm/đổi.`
-                        : "Chọn AI Provider và nhập API Key để bắt đầu phân tích sách."}
+                        : "Chọn nhà cung cấp AI và nhập API Key của bạn để phân tích sách. Sách đã phân tích sẵn thì đọc được mà không cần key."}
                     </p>
-                    {!isKeyConfigured && freeQuotaRemaining !== null && (
-                      <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wide ${freeQuotaRemaining > 0
-                        ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
-                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                        }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${freeQuotaRemaining > 0 ? 'bg-blue-400 animate-pulse' : 'bg-rose-400'}`} />
-                        {freeQuotaRemaining > 0
-                          ? `Còn ${freeQuotaRemaining} lượt miễn phí tháng này`
-                          : 'Hết lượt miễn phí — Nhập key để tiếp tục'}
+                    {!isKeyConfigured && isAdmin && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wide bg-blue-500/15 text-blue-400 border border-blue-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                        Đang dùng khoá chung (quyền admin)
                       </div>
                     )}
                   </div>

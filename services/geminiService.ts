@@ -47,6 +47,10 @@ const callGeminiProxy = async (
   if (!res.ok) {
     console.error('Proxy error:', res.status, json);
     if (json.error === 'FREE_QUOTA_EXHAUSTED') throw new Error('FREE_QUOTA_EXHAUSTED');
+    // Khoá AI chung nay chỉ dành cho admin — người dùng phải tự thêm key riêng.
+    if (json.error === 'PERSONAL_KEY_REQUIRED') {
+      throw new Error('API_KEY_ERROR: Bạn cần thêm API Key AI của riêng mình để phân tích sách. Vào Cài đặt, chọn nhà cung cấp rồi dán key vào.');
+    }
     // Máy chủ đã chặn kết quả rỗng và KHÔNG trừ lượt — phải nói rõ để người dùng
     // dám bấm lại, thay vì tưởng mình vừa đốt mất lượt duy nhất của tháng.
     if (json.error === 'ANALYSIS_FAILED') {
@@ -329,106 +333,37 @@ export const geminiService = {
    * Phân tích chuyên sâu - ORCHESTRATOR
    * Gọi 3 Agent song song và merge kết quả
    */
+  /**
+   * Phân tích trọn một cuốn = ba agent gọi RIÊNG, song song, rồi gộp.
+   *
+   * CỐ Ý không dùng agentType 'full' của Edge Function nữa: ba agent nối nhau
+   * trong một lời gọi vượt trần 150 giây của Supabase và chết với
+   * WORKER_RESOURCE_LIMIT — đo ngày 31/08/2026, cả khi chạy song song lẫn tuần
+   * tự. Tách thành ba lời gọi thì mỗi cái tự do trong hạn mức của riêng nó.
+   *
+   * Mỗi hàm con tự chọn đường (khoá riêng của người dùng hay khoá chung qua
+   * Edge Function) và tự soát kết quả, nên ở đây chỉ còn việc gộp.
+   */
   async processBookFull(bookTitle: string, author: string, goal: string) {
     try {
       const providerId = apiKeyManager.getActiveProvider();
-      const userKey = apiKeyManager.getProviderKey(providerId);
+      const providerName = PROVIDERS[providerId]?.name || providerId;
+      console.log(`🚀 Phân tích "${bookTitle}" — 3 agent song song...`);
 
-      // Nếu user có key riêng → gọi AI trực tiếp
-      if (userKey) {
-        const providerOverride = providerId !== 'gemini' ? { providerId, apiKey: userKey } : undefined;
-        const providerName = PROVIDERS[providerId]?.name || providerId;
-        console.log(`🚀 Starting parallel analysis with ${providerName}...`);
+      const [meta, knowledge, ideas] = await Promise.all([
+        this.processMetaOnly(bookTitle, author, goal),
+        this.processKnowledgeOnly(bookTitle, author, goal),
+        this.processIdeasOnly(bookTitle, author, goal),
+      ]);
 
-        // For Gemini, use native SDK; for others, use unified provider
-        const ai = providerId === 'gemini' ? new GoogleGenAI({ apiKey: userKey }) : null;
+      const merged = {
+        ...meta,
+        knowledgeArchitecture: knowledge?.knowledgeArchitecture || [],
+        ideaSystem: ideas?.ideaSystem || [],
+        _metadata: { provider: providerName, analyzedAt: new Date().toISOString() },
+      };
 
-        // Chạy 3 Agent SONG SONG với auto-retry
-        const [metaResult, knowledgeResult, ideaResult] = await Promise.all([
-          retryWithDelay(() => processBookMeta(ai, bookTitle, author, goal, providerOverride))
-            .then(res => {
-              console.log("✅ Agent 1 (Meta) completed");
-              return res;
-            })
-            .catch(err => {
-              console.error("❌ Agent 1 (Meta) failed:", err);
-              return null;
-            }),
-
-          retryWithDelay(() => processKnowledgeArchitecture(ai, bookTitle, author, goal, providerOverride))
-            .then(res => {
-              console.log("✅ Agent 2 (Knowledge) completed -", res?.knowledgeArchitecture?.length || 0, "parts");
-              return res;
-            })
-            .catch(err => {
-              console.error("❌ Agent 2 (Knowledge) failed:", err);
-              return null;
-            }),
-
-          retryWithDelay(() => processIdeaSystem(ai, bookTitle, author, goal, providerOverride))
-            .then(res => {
-              console.log("✅ Agent 3 (Ideas) completed -", res?.ideaSystem?.length || 0, "ideas");
-              return res;
-            })
-            .catch(err => {
-              console.error("❌ Agent 3 (Ideas) failed:", err);
-              return null;
-            })
-        ]);
-
-        // Merge kết quả từ 3 agents
-        const mergedResult = {
-          bookMeta: metaResult?.bookMeta || {
-            estimatedReadingTime: 0,
-            difficultyLevel: "TRUNG BÌNH",
-            bookType: "KẾT HỢP"
-          },
-          centralThesis: metaResult?.centralThesis || {
-            oneLiner: "",
-            expanded: ""
-          },
-          criticalAnalysis: metaResult?.criticalAnalysis || {
-            strengths: [],
-            weaknesses: [],
-            counterArguments: []
-          },
-          personalizedInsights: metaResult?.personalizedInsights || {
-            relevanceScore: 0,
-            relevanceExplanation: "",
-            customActionPlan: []
-          },
-          executiveSummary: metaResult?.executiveSummary || {
-            forBusy: "",
-            ifOnlyOneThing: ""
-          },
-          knowledgeArchitecture: knowledgeResult?.knowledgeArchitecture || [],
-          ideaSystem: ideaResult?.ideaSystem || [],
-          _metadata: {
-            provider: providerName,
-            analyzedAt: new Date().toISOString()
-          }
-        };
-
-        assertAnalysisUsable(mergedResult, 'full');
-        console.log("🎉 Analysis complete!");
-        console.log("📊 Stats:", {
-          provider: providerName,
-          knowledgeParts: mergedResult.knowledgeArchitecture.length,
-          ideas: mergedResult.ideaSystem.length,
-          hasMetaData: !!metaResult
-        });
-
-        return mergedResult;
-
-      } else {
-        // Không có user key → gọi Edge Function (shared key an toàn, server-side)
-        console.log("📌 No personal key — using Gemini Proxy (Edge Function)...");
-        const result = await callGeminiProxy('full', bookTitle, author, goal);
-        assertAnalysisUsable(result, 'full');
-        console.log("🎉 Proxy analysis complete!");
-        return result;
-      }
-
+      return assertAnalysisUsable(merged, 'full');
     } catch (error) {
       console.error("AI Critical Error:", error);
       return handleApiError(error);

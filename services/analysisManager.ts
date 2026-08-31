@@ -81,8 +81,8 @@ function docDuoc(msg: string): string {
  */
 function thongBaoHetLuot(): string {
     return apiKeyManager.getKey()
-        ? 'API Key của bạn đã hết quota. Vui lòng liên kết thanh toán (billing) ở trang nhà cung cấp, hoặc chờ quota reset.'
-        : 'Bạn đã dùng hết lượt phân tích miễn phí của tháng này. Lượt mới có vào đầu tháng sau — hoặc vào Cài đặt thêm API Key riêng để dùng ngay.';
+        ? 'API Key của bạn đã hết hạn mức. Vui lòng liên kết thanh toán (billing) ở trang nhà cung cấp, hoặc chờ hạn mức reset.'
+        : 'Bạn cần thêm API Key AI của riêng mình để phân tích sách. Vào Cài đặt, chọn nhà cung cấp rồi dán key vào.';
 }
 
 // ── Public API ───────────────────────────────────────────────
@@ -102,8 +102,12 @@ export const analysisManager = {
     },
 
     /**
-     * Bắt đầu phân tích — 3 agent chạy SONG SONG (có key riêng).
-     * Khi dùng shared key (proxy) → gọi 1 lần processBookFull để chỉ tốn 1 quota.
+     * Bắt đầu phân tích — 3 agent chạy SONG SONG.
+     *
+     * Cùng một đường cho cả khoá riêng lẫn khoá chung: mỗi agent tự chọn lối đi.
+     * Trước đây người không có khoá riêng đi nhánh riêng gọi một lượt 'full' để
+     * tiết kiệm quota, nhưng lượt đó vượt trần 150 giây của Edge Function nên
+     * không bao giờ xong, và chế độ miễn phí cũng đã bỏ.
      */
     async startAnalysis(
         bookId: string,
@@ -140,37 +144,6 @@ export const analysisManager = {
         });
 
         try {
-            const hasPersonalKey = !!apiKeyManager.getKey();
-
-            if (!hasPersonalKey) {
-                // ── PROXY MODE: 1 lần gọi duy nhất = 1 quota/tháng ──────────
-                console.log('📌 No personal key — using single processBookFull (proxy)');
-                setState({ progress: 'Đang phân tích qua AI Proxy (1 lượt miễn phí)...' });
-
-                const result = await geminiService.processBookFull(bookTitle, author, goal);
-
-                // Map result vào progressive UI
-                mergePartial({
-                    bookMeta: result.bookMeta,
-                    centralThesis: result.centralThesis,
-                    criticalAnalysis: result.criticalAnalysis,
-                    personalizedInsights: result.personalizedInsights,
-                    executiveSummary: result.executiveSummary,
-                    knowledgeArchitecture: result.knowledgeArchitecture,
-                    ideaSystem: result.ideaSystem,
-                });
-                setState({
-                    agentProgress: { meta: 'done', knowledge: 'done', ideas: 'done' },
-                    progress: '✅ Phân tích hoàn tất!',
-                    status: 'done',
-                    result: partial,
-                });
-                onComplete(bookId, partial);
-                return;
-            }
-
-            // ── PERSONAL KEY MODE: 3 agents song song (nhanh hơn) ──────
-
             setState({ progress: 'Đang khởi động 3 AI Agent song song...' });
 
             // Lưu lỗi từ mỗi agent để hiển thị cho user nếu tất cả đều fail

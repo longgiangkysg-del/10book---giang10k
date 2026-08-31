@@ -352,7 +352,7 @@ const PublicBookView: React.FC<PublicBookViewProps> = ({ bookId, onLogin }) => {
                 <div className="mt-12 bg-gradient-to-r from-blue-600/10 to-indigo-600/10 border border-blue-600/20 p-6 md:p-10 rounded-2xl text-center space-y-4">
                     <h3 className="text-lg md:text-xl font-medium text-white tracking-tight">Phân tích sách của riêng bạn</h3>
                     <p className="text-slate-400 text-sm max-w-lg mx-auto">
-                        Đăng ký miễn phí để sử dụng AI phân tích tri thức chuyên sâu cho bất kỳ cuốn sách nào bạn muốn.
+                        Đăng ký để đọc trọn kho sách đã phân tích. Muốn tự phân tích cuốn mới thì thêm API Key AI của bạn trong Cài đặt.
                     </p>
                     <button onClick={onLogin} className="px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] uppercase tracking-widest transition-colors shadow-xl inline-flex items-center gap-3">
                         <LogIn size={16} /> BẮT ĐẦU MIỄN PHÍ

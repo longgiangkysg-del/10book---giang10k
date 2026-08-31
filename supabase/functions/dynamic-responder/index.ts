@@ -6,8 +6,10 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ─── Rate limit config: 1 lượt miễn phí / user / tháng ───────
-const MONTHLY_QUOTA = 1;
+// Khoá AI dùng chung nay CHỈ phục vụ admin. Người dùng thường phải tự nhập
+// API Key riêng trong Cài đặt — anh Giang chốt ngày 31/08/2026.
+// Danh sách này phải khớp ADMIN_EMAILS trong services/supabaseClient.ts.
+const ADMIN_EMAILS = ['longgiangptit@gmail.com'];
 
 // Model Gemini — giữ ĐỒNG BỘ với GEMINI_DEFAULT_MODEL trong services/aiProviders.ts.
 // Deno không import được từ đó nên phải chép tay. gemini-2.5-pro đã bị Google
@@ -81,28 +83,13 @@ Deno.serve(async (req: Request) => {
         let usedSharedKey = false;
 
         if (!apiKey) {
-            // Ưu tiên 2: Shared key — kiểm tra rate limit (1 lượt/tháng)
-            const now = new Date();
-            const firstDayOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-            const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            const lastDay = `${lastDayOfMonth.getFullYear()}-${String(lastDayOfMonth.getMonth() + 1).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`;
-
-            const { data: usageRows } = await adminSupabase
-                .from('shared_key_usage')
-                .select('count')
-                .eq('user_id', userId)
-                .gte('used_at', firstDayOfMonth)
-                .lte('used_at', lastDay);
-
-            const usedThisMonth = (usageRows || []).reduce((sum: number, row: any) => sum + (row.count ?? 0), 0);
-
-            if (usedThisMonth >= MONTHLY_QUOTA) {
-                return new Response(JSON.stringify({ error: 'FREE_QUOTA_EXHAUSTED' }), {
-                    status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            // Không có khoá riêng thì chỉ admin mới đi tiếp được.
+            if (!ADMIN_EMAILS.includes(authData.user.email || '')) {
+                return new Response(JSON.stringify({ error: 'PERSONAL_KEY_REQUIRED' }), {
+                    status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }
 
-            // Lấy shared key từ Supabase Secrets (KHÔNG bao giờ ra client)
             apiKey = Deno.env.get('GEMINI_SHARED_KEY') || null;
             if (!apiKey) {
                 return new Response(JSON.stringify({ error: 'Shared key not configured' }), {
@@ -110,12 +97,11 @@ Deno.serve(async (req: Request) => {
                 });
             }
 
-            // CỐ Ý chưa trừ lượt ở đây. Người dùng khoá chung mỗi tháng chỉ có
-            // MỘT lượt; trừ trước khi gọi Gemini nghĩa là gõ sai tên sách hay dính
-            // một cú 503 cũng mất trắng cả tháng. Lượt được ghi ở cuối, và chỉ khi
-            // kết quả thật sự dùng được.
+            // Admin không bị đếm lượt. Bảng shared_key_usage và RPC
+            // increment_shared_key_usage vẫn còn nguyên trong DB, phòng khi mở
+            // lại chế độ miễn phí thì bật lên chứ không phải dựng lại từ đầu.
             usedSharedKey = true;
-            console.log(`📌 User ${userId} dùng shared key (${usedThisMonth + 1}/${MONTHLY_QUOTA} tháng này)`);
+            console.log(`📌 Admin ${userId} dùng khoá chung`);
         }
 
         // ── 4. Gọi Gemini API server-side ────────────────────────
@@ -185,18 +171,6 @@ Deno.serve(async (req: Request) => {
             return new Response(JSON.stringify({ error: 'ANALYSIS_FAILED' }), {
                 status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
-        }
-
-        // Tới đây mới ghi nhận lượt: có kết quả trong tay rồi mới tính tiền.
-        if (usedSharedKey) {
-            const today = new Date().toISOString().split('T')[0];
-            const { error: quotaError } = await adminSupabase.rpc('increment_shared_key_usage', {
-                p_user_id: userId,
-                p_date: today
-            });
-            // Ghi hụt thì chỉ log: đã tốn tiền gọi Gemini rồi, ném lỗi lúc này là
-            // vứt luôn kết quả người dùng vừa chờ mấy phút.
-            if (quotaError) console.error('Không ghi được lượt dùng:', quotaError.message);
         }
 
         return new Response(JSON.stringify({ success: true, data: result, usedSharedKey }), {
