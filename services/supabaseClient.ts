@@ -394,12 +394,21 @@ export const bookService = {
     const isAdmin = await authService.isAdmin();
     if (!isAdmin) throw new Error('Chỉ admin mới có quyền xóa sách vĩnh viễn.');
 
-    const { error } = await supabase
+    // .select() bắt buộc: khi RLS chặn DELETE, PostgREST trả 204 + error null.
+    // Không đếm hàng thật sự bị xoá thì app báo "đã xoá" trong khi sách còn nguyên.
+    const { data, error } = await supabase
       .from('books')
       .delete()
-      .eq('id', bookId);
+      .eq('id', bookId)
+      .select('id');
 
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(
+        'Cơ sở dữ liệu từ chối lệnh xoá (bảng books chưa có policy DELETE cho admin). ' +
+        'Chạy supabase_admin_delete_policy.sql trong Supabase SQL Editor rồi thử lại.'
+      );
+    }
   },
 
   async removeUserFromBook(bookId: string) {
@@ -410,12 +419,17 @@ export const bookService = {
     if (!book) return;
 
     const newUserIds = (book.user_ids || []).filter((id: string) => id !== user.id);
-    const { error } = await supabase
+    // Cùng bẫy như deleteBook: UPDATE bị RLS chặn vẫn trả error null.
+    const { data, error } = await supabase
       .from('books')
       .update({ user_ids: newUserIds, updated_at: new Date().toISOString() })
-      .eq('id', bookId);
+      .eq('id', bookId)
+      .select('id');
 
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('Cơ sở dữ liệu từ chối lệnh cập nhật — không gỡ được sách khỏi tủ.');
+    }
   }
 };
 
