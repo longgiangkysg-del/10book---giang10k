@@ -9,6 +9,11 @@ const corsHeaders = {
 // ─── Rate limit config: 1 lượt miễn phí / user / tháng ───────
 const MONTHLY_QUOTA = 1;
 
+// Model Gemini — giữ ĐỒNG BỘ với GEMINI_DEFAULT_MODEL trong services/aiProviders.ts.
+// Deno không import được từ đó nên phải chép tay. gemini-2.5-pro đã bị Google
+// chặn với project mới (404 "no longer available to new users").
+const GEMINI_MODEL = 'gemini-3.1-pro-preview';
+
 Deno.serve(async (req: Request) => {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
@@ -107,7 +112,7 @@ Deno.serve(async (req: Request) => {
             const prompt = buildPrompt(type, bookTitle, author, goalStr);
             const isHeavy = type === 'knowledge' || type === 'ideas';
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-pro',
+                model: GEMINI_MODEL,
                 contents: { parts: [{ text: prompt }] },
                 config: {
                     responseMimeType: 'application/json',
